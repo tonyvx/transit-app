@@ -104,6 +104,14 @@ struct LiveTimes: Sendable {
     var cancelled = false
 }
 
+struct TripStop: Codable, Hashable, Identifiable, Sendable {
+    let stationId: String
+    let name: String
+    let lat: Double
+    let lon: Double
+    var id: String { stationId }
+}
+
 struct ItineraryLeg: Identifiable {
     enum Kind {
         case access(AccessMode)
@@ -125,6 +133,10 @@ struct ItineraryLeg: Identifiable {
     var isLive = false
     /// Live departure minus scheduled departure.
     var delaySeconds = 0
+    /// MBTA trip id used to match this planned leg to the live vehicle.
+    var tripId: String? = nil
+    /// Ordered stops on the transit leg, used to count down to disembarkment.
+    var tripStops: [TripStop] = []
 }
 
 struct Itinerary: Identifiable {

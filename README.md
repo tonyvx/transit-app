@@ -9,6 +9,7 @@ Native SwiftUI iOS app (iOS 17+) with no backend. It calls the MBTA V3 API direc
 - MBTA alerts grouped by relevance, with drive time to lines that start ahead of you.
 - On-device "you're probably on train X" matching.
 - Trip planner with transfers and walk, bike, scooter or car access legs (see below).
+- Optional trip confirmation when your GPS and the live MBTA train match a selected itinerary. A Lock Screen Live Activity tracks the next stop and stops to disembarkment; background GPS requires opt-in Always access and stays on the phone.
 
 ## Favorites, reminders and widget
 - Star a station in its sheet to add it to your favorites. Save a planned trip and give it a weekday reminder. Tap "Remind me to leave" on a trip for a one-off notification. Reminders are local and don't react to delays.
@@ -18,10 +19,10 @@ Native SwiftUI iOS app (iOS 17+) with no backend. It calls the MBTA V3 API direc
 `cd ios && xcodegen generate`, then run the `TransitApp` scheme's tests in Xcode (Cmd+U), or:
 `xcodebuild test -project TransitApp.xcodeproj -scheme TransitApp -destination 'platform=iOS Simulator,name=iPhone 17'`
 
-They cover the trip router (direct rides, transfers, walking transfers, direction, cost), the GPS train matcher, the line, route, branch, direction and "approaching" vehicle filter, and the access-mode estimates. They don't call the network.
+They cover the trip router (direct rides, transfers, walking transfers, direction, cost), the GPS train matcher, trip boarding confirmation, stop progression, the line, route, branch, direction and "approaching" vehicle filter, access-mode estimates, live predictions, arrive-by and favorites. They don't call the network.
 
 ## Roadmap
-- Opt-in GPS sharing and manual stoppage and crowding reports, pooled across riders. This needs a shared store (own backend or CloudKit) and "Always" location access, and the privacy text and App Store privacy answers must change with it.
+- Opt-in GPS sharing and manual stoppage and crowding reports, pooled across riders. This needs a shared store (own backend or CloudKit); the on-device trip tracking feature does not share location.
 - Provider interface (`TransitProvider`) to support other cities. In-app MBTA strings would then come from the provider.
 - Later: crowd-aware arrival predictions, stoppage detection, train-specific alerts, reliability statistics and departure recommendations.
 
@@ -43,6 +44,8 @@ They cover the trip router (direct rides, transfers, walking transfers, directio
 
 ## Trip planner
 
-Tap the route icon in the chip row. Set a start and destination by searching, using your location, or dropping a pin on the map. Choose how you get to the first station and from the last one (walk, bike, scooter or car). Pick Leave now, Depart at or Arrive by (any day the MBTA has published schedules for). The planner finds up to three trips, including transfers, using live MBTA predictions where they exist (marked Live, with the delay) and scheduled times otherwise, and draws the selected one on the map.
+Tap the trip summary at the top of the map. Set a start and destination by searching, using your location, or dropping a pin on the map. Choose how you get to the first station and from the last one (walk, bike, scooter or car). Pick Leave now, Depart at or Arrive by (any day the MBTA has published schedules for). The planner finds up to three trips, including transfers, using live MBTA predictions where they exist (marked Live, with the delay) and scheduled times otherwise, and draws the selected one on the map. When your GPS matches the selected train, the app asks if you are aboard. Confirm to start a Live Activity showing the next stop and count to disembarkment.
+
+Background trip updates are optional. Enable **Allow background trip updates** in Preferences to request Always location access. GPS runs in the background only for a trip you confirm. If the app is backgrounded when a likely boarding match is found, an authorized local notification opens the app to confirm; otherwise the confirmation appears when the app is open. If Always access is not granted, the Live Activity updates while the app is open and displays the last update when backgrounded.
 
 The MBTA has no trip-planner API, so routing runs on-device over the MBTA schedule data. Walk and car legs use Apple Maps. Bike and scooter legs are estimated from the walking distance at typical speeds. Parking and bike facilities are not considered.

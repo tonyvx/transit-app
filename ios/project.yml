@@ -29,6 +29,9 @@ targets:
         UILaunchScreen: {}
         MBTA_API_KEY: $(MBTA_API_KEY)
         NSLocationWhenInUseUsageDescription: Used to show your position, work out which train you are on, and plan trips from where you are. Your location stays on your phone.
+        NSLocationAlwaysAndWhenInUseUsageDescription: If you enable background trip updates, location is used only during a trip you confirm, to match the train and update your Lock Screen Live Activity. Location stays on your phone.
+        UIBackgroundModes: [location]
+        NSSupportsLiveActivities: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tonyvx.transitapp
@@ -69,10 +72,21 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.tonyvx.transitapp.tests
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: DK5MR355S9
+  TransitAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: TransitApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tonyvx.transitapp.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: DK5MR355S9
 schemes:
   TransitApp:
     build:
       targets:
         TransitApp: all
     test:
-      targets: [TransitAppTests]
+      targets: [TransitAppTests, TransitAppUITests]

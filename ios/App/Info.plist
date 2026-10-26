@@ -22,8 +22,16 @@
 	<string>1</string>
 	<key>MBTA_API_KEY</key>
 	<string>$(MBTA_API_KEY)</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>If you enable background trip updates, location is used only during a trip you confirm, to match the train and update your Lock Screen Live Activity. Location stays on your phone.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Used to show your position, work out which train you are on, and plan trips from where you are. Your location stays on your phone.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

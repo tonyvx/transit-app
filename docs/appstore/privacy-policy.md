@@ -5,7 +5,7 @@ Last updated: [DATE]
 Boston Transit ("the app") is made by Anthony Valantra. Contact: [EMAIL]
 
 ## What the app does with your data
-- **Location:** the app uses your location to show your position, find nearby stations, match you to a train and plan trips from where you are. This is processed on your phone. It is not sent to the developer and is not stored on any server.
+- **Location:** the app uses your location to show your position, find nearby stations, match you to a train and plan trips from where you are. This is processed on your phone and is not sent to the developer or stored on a server. If you opt in to background trip updates and confirm that you are aboard a planned train, location may be used in the background during that trip to update a Lock Screen Live Activity. Background updates stop when you end the trip or reach your destination. You can turn off this permission in Preferences or iOS Settings.
 - **Preferences:** your chosen lines, routes and directions are saved on your phone only.
 - **Accounts:** none. The app doesn't ask for your name, email or any personal details.
 - **Analytics, advertising and tracking:** none.

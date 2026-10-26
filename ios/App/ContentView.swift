@@ -41,6 +41,7 @@ struct ContentView: View {
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Station \(st.name)")
                     }
                 }
                 ForEach(model.mapVehicles) { v in
@@ -58,7 +59,7 @@ struct ContentView: View {
 
             VStack(spacing: 8) {
                 if model.preferences.lines.isEmpty { FirstRunCard { showHowTo = true } }
-                LegendView(onPreferences: { showPreferences = true }, onAlerts: { showAlerts = true }, onPlan: { model.planner.showSheet = true })
+                LegendView(onPreferences: { showPreferences = true }, onAlerts: { showAlerts = true })
                 if let m = model.myTrain, let v = model.vehicles.first(where: { $0.id == m.vehicleId }) {
                     MyTrainCard(vehicle: v, match: m)
                 }
@@ -66,7 +67,14 @@ struct ContentView: View {
             }
             .padding()
         }
-        .overlay(alignment: .top) { statusBar }
+        .overlay(alignment: .top) {
+            VStack(spacing: 6) {
+                statusBar
+                plannerSummaryBar
+                journeyStatusBar
+            }
+            .padding(.horizontal)
+        }
         .overlay(alignment: .top) {
             if let f = model.planner.pickTarget {
                 HStack {
@@ -104,6 +112,27 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showPreferences) { PreferencesView() }
         .sheet(isPresented: $showHowTo, onDismiss: { model.location.start() }) { HowToView() }
+        .alert(
+            "Are you on this train?",
+            isPresented: Binding(
+                get: { model.journey.pendingSuggestion != nil },
+                set: { if !$0 { model.journey.dismissSuggestion() } }
+            ),
+            presenting: model.journey.pendingSuggestion
+        ) { suggestion in
+            Button("I'm on \(suggestion.trainLabel)") {
+                Task {
+                    await model.journey.confirmSuggestion(
+                        itinerary: model.planner.selected,
+                        location: model.location,
+                        routeNames: model.routes.mapValues(\.name)
+                    )
+                }
+            }
+            Button("Not now", role: .cancel) { model.journey.dismissSuggestion() }
+        } message: { suggestion in
+            Text("GPS matches the planned \(suggestion.routeName) train from \(suggestion.boardName) to \(suggestion.destinationName). Confirm to show your next stop and stops remaining on the Lock Screen. Your location stays on this iPhone.")
+        }
         .task {
             // Ask for location after the first-run guide, so the two don't stack.
             if hasSeenHowTo { model.location.start() } else { hasSeenHowTo = true; showHowTo = true }
@@ -119,6 +148,76 @@ struct ContentView: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    private var plannerSummaryBar: some View {
+        Button { model.planner.showSheet = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: model.planner.selected == nil ? "arrow.triangle.turn.up.right.diamond.fill" : "tram.fill")
+                    .foregroundStyle(Color.accentColor)
+                if let itinerary = model.planner.selected,
+                   let from = model.planner.from,
+                   let to = model.planner.to {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(from.name) → \(to.name)")
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text("Leave \(itinerary.leaveBy, style: .time) · arrive \(itinerary.arriveAt, style: .time) · \(transferSummary(itinerary.transfers))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("Plan a trip")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("plannerSummaryButton")
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private var journeyStatusBar: some View {
+        if model.journey.isActive {
+            HStack(spacing: 8) {
+                Image(systemName: "tram.fill").foregroundStyle(Color.accentColor)
+                Text("\(model.journey.nextStopName) · \(model.journey.stopsRemaining) stops to go")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Button("End") {
+                    Task { await model.journey.endTrip(location: model.location) }
+                }
+                .font(.caption.bold())
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+        } else if let message = model.journey.statusMessage {
+            Text(message)
+                .font(.caption)
+                .padding(8)
+                .background(.regularMaterial, in: Capsule())
+        }
+    }
+
+    private func transferSummary(_ count: Int) -> String {
+        switch count {
+        case 0: "Direct"
+        case 1: "1 transfer"
+        default: "\(count) transfers"
+        }
     }
 
     private func isAccess(_ leg: ItineraryLeg) -> Bool {
@@ -258,7 +357,6 @@ struct LegendView: View {
     @Environment(AppModel.self) private var model
     let onPreferences: () -> Void
     let onAlerts: () -> Void
-    let onPlan: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -279,17 +377,16 @@ struct LegendView: View {
                     }
                 }
             }
-            Button(action: onPlan) { Image(systemName: "arrow.triangle.turn.up.right.diamond.fill") }
-                .buttonStyle(.bordered).controlSize(.small)
-                .accessibilityLabel("Trip planner")
             Button(action: onPreferences) { Image(systemName: "gearshape.fill") }
                 .buttonStyle(.bordered).controlSize(.small)
                 .accessibilityLabel("Preferences")
+                .accessibilityIdentifier("preferencesButton")
             Button(action: onAlerts) {
                 Label("\(model.alerts.count)", systemImage: "exclamationmark.triangle.fill")
             }
             .buttonStyle(.borderedProminent).controlSize(.small)
             .accessibilityLabel("\(model.alerts.count) alerts")
+            .accessibilityIdentifier("alertsButton")
             }
             HStack(spacing: 8) {
                 ForEach(Direction.allCases) { d in
@@ -362,6 +459,28 @@ struct PreferencesView: View {
                 } footer: {
                     Text("Uses your location and the next stop predictions at your nearest station on each line. Direction selection above still applies.")
                 }
+                Section("Trip tracking") {
+                    Toggle(isOn: Binding(
+                        get: { model.location.backgroundTripTrackingEnabled },
+                        set: { model.location.setBackgroundTripTracking($0) }
+                    )) {
+                        Label("Allow background trip updates", systemImage: "location.circle")
+                    }
+                    if model.location.authorization == .denied || model.location.authorization == .restricted {
+                        Text("Location access is disabled. Change it in Settings > Privacy & Security > Location Services > Boston Transit.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if model.location.backgroundTripTrackingEnabled,
+                              model.location.authorization != .authorizedAlways {
+                        Text("Choose Always in the iOS location permission prompt or Settings. Background GPS is used only during a confirmed trip to update its Lock Screen Live Activity.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("When enabled, GPS and MBTA train positions are compared on this iPhone during a confirmed trip. The Live Activity shows your next stop and stops remaining. No location is sent to a server.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Section {
                     if model.favorites.stations.isEmpty {
                         Text("Tap a station on the map, then the star, to add it here and to the home-screen widget.").font(.footnote).foregroundStyle(.secondary)
@@ -379,7 +498,7 @@ struct PreferencesView: View {
                 }
                 Section("About and privacy") {
                     Text("Transit data is provided by the MBTA (Massachusetts Bay Transportation Authority) through its V3 API.")
-                    Text("Your location stays on this phone. It is used to show your position, match you to a train and find nearby stations. Address searches and walking and driving directions in the trip planner are handled by Apple Maps. This app has no account and no server, and it doesn't share your location with anyone.")
+                    Text("Your location stays on this phone. It is used to show your position, match you to a train and find nearby stations. If you enable background trip updates, GPS runs in the background only during a confirmed trip so the Lock Screen Live Activity can show stops remaining. Address searches and walking and driving directions in the trip planner are handled by Apple Maps. This app has no account and no server, and it doesn't share your location with anyone.")
                     Text("Trip planner times use live MBTA predictions where available and the timetable otherwise. Bike and scooter times are estimates. Reminders are local notifications and don't react to delays.")
                 }
                 .font(.footnote)

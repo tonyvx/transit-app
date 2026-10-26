@@ -17,6 +17,8 @@
 ## Done in the repo
 - [x] Bundle ID, display name, icon, portrait only
 - [x] Accurate location permission text
+- [ ] Verify optional Always location permission, background GPS indicator and trip Live Activity on a real iPhone.
+- [ ] Confirm trip tracking stops when the rider ends the trip or reaches the final stop.
 - [x] Privacy manifest (`ios/App/PrivacyInfo.xcprivacy`)
 - [x] MBTA attribution and privacy text in Preferences
 - [x] Listing, privacy policy and support drafts

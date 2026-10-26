@@ -1,8 +1,10 @@
 import Foundation
+import os
 import UserNotifications
 
 /// Local notifications only. Nothing is sent to a server, so reminders fire on schedule rather than from live conditions.
 enum Notifier {
+    private static let logger = Logger(subsystem: "com.tonyvx.transitapp", category: "Notifications")
     /// Shows banners while the app is open, and records taps.
     final class Delegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
         func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
@@ -51,6 +53,32 @@ enum Notifier {
 
     static func hasLeaveReminder(key: String) async -> Bool {
         await UNUserNotificationCenter.current().pendingNotificationRequests().contains { $0.identifier == leaveReminderId(key) }
+    }
+
+    static func scheduleBoardingPrompt(id: String, routeName: String, destination: String) async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .authorized
+                || settings.authorizationStatus == .provisional
+                || settings.authorizationStatus == .ephemeral else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Are you on this train?"
+        content.body = "Your GPS matches the planned \(routeName) train to \(destination). Open Boston Transit to confirm and start stop tracking."
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "boarding.\(id)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        )
+        do {
+            try await center.add(request)
+        } catch {
+            logger.error("Unable to schedule boarding prompt: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    static func cancelBoardingPrompt(id: String) {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["boarding.\(id)"])
     }
 
     /// Repeating Monday to Friday reminder for a saved trip.

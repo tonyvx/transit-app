@@ -111,7 +111,11 @@ struct TripPlanner {
                 legs.append(ItineraryLeg(kind: .transit, routeId: tl.routeId, directionId: tl.directionId, fromName: fs.name, toName: ts.name,
                                          start: tripDepart, end: tripArrive, stopCount: tl.stationIds.count - 1,
                                          coordinates: tl.stationIds.compactMap { network.stations[$0] }.map { .init(latitude: $0.lat, longitude: $0.lon) },
-                                         isLive: trip.isLive, delaySeconds: trip.delay))
+                                         isLive: trip.isLive, delaySeconds: trip.delay,
+                                         tripId: trip.tripId,
+                                         tripStops: tl.stationIds.compactMap { network.stations[$0] }.map {
+                                             TripStop(stationId: $0.id, name: $0.name, lat: $0.lat, lon: $0.lon)
+                                         }))
                 t = tripArrive
             }
         }
@@ -132,7 +136,7 @@ struct TripPlanner {
         return Itinerary(legs: [accessIn] + legs + [accessOut], leaveBy: leaveBy, arriveAt: arrive)
     }
 
-    struct TimedTrip { let depart: Date; let arrive: Date; var isLive = false; var delay = 0 }
+    struct TimedTrip { let tripId: String; let depart: Date; let arrive: Date; var isLive = false; var delay = 0 }
 
     /// First trip on this leg's route that leaves at or after `notBefore` and calls at the alighting station.
     /// Scheduled times are replaced by live MBTA predictions where they exist, and cancelled or skipped trips are passed over.
@@ -161,7 +165,7 @@ struct TripPlanner {
                 arrive = scheduled.addingTimeInterval(depart.timeIntervalSince(d.time))
             }
             guard let arrive, arrive > depart else { continue }
-            candidates.append(TimedTrip(depart: depart, arrive: arrive, isLive: usedLive, delay: Int(depart.timeIntervalSince(d.time))))
+            candidates.append(TimedTrip(tripId: d.tripId, depart: depart, arrive: arrive, isLive: usedLive, delay: Int(depart.timeIntervalSince(d.time))))
             if candidates.count == 2 { break }
         }
         // A delayed trip can be overtaken by the next one, so take the earliest arrival.

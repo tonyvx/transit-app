@@ -1,6 +1,6 @@
 # Boston Transit roadmap
 
-Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts, preferences, a first-run guide, a trip planner with live predictions, favorites, reminders and a widget. 51 unit tests pass. It runs on a real iPhone and on a simulator, but the planner's live labels, reminders and the widget have not been checked on screen yet.
+Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts, preferences, a first-run guide, a trip planner with live predictions, favorites, reminders, a widget and opt-in trip Live Activity tracking. 58 unit tests pass. The latest trip-tracking change still needs real-device validation.
 
 ## Done
 
@@ -10,12 +10,14 @@ Status today: on-device only (no backend). Live vehicles for rail and the Silver
 - Planning for any day with published schedules, with Leave now, Depart at and Arrive by. This fixed a bug where every day except today found no trips.
 - Favorite stations, saved trips, a weekday reminder per saved trip, and a one-off "Remind me to leave".
 - "Next trains" widget (small, medium, lock screen) that reads favorites through an App Group.
-- Unit tests for the router, matcher, filters, live predictions, arrive-by and favorites.
+- Trip boarding confirmation when the planned train ID, GPS matcher and rider/train proximity agree.
+- Lock Screen Live Activity with next stop and stops remaining, updated using fresh train positions and background GPS when opted in. Always access and background location are enabled only after explicit consent and only during a confirmed trip.
+- Unit tests for the router, matcher, filters, live predictions, arrive-by, favorites, trip confirmation and stop progression.
 
 ## Next steps (in value-for-effort order)
 
 ### 1. Check the new features on the phone
-- Confirm on a real iPhone: the Live labels in the planner, a leave reminder firing, and the widget. A free personal team may not honor the App Group, so favorites might not reach the widget. If so, this is another reason to get the paid account.
+- Confirm on a real iPhone: the boarding prompt, Always location permission, Live Activity updating and ending at disembarkment, a leave reminder firing, and the widget. A free personal team may not honor the App Group, so favorites might not reach the widget.
 - Retake the how-to screenshots (they show old states), and add steps for favorites and the widget.
 
 ### 2. Finish the planner
@@ -31,8 +33,8 @@ Status today: on-device only (no backend). Live vehicles for rail and the Silver
 
 ### 4. Alerts and live updates
 - Local notifications for alerts on preferred lines (needs background fetch, which is unreliable).
-- Push alerts and Live Activities while the app is closed need APNs and so a small server. Decide this together with the crowdsourcing store.
-- Live Activity for a trip in progress. Apple Watch app after that.
+- Push alerts and server-driven Live Activity updates for conditions independent of active GPS tracking need APNs and a small server. Decide this together with the crowdsourcing store.
+- Apple Watch app after on-device trip tracking is validated.
 
 ### 5. Coverage: buses and ferries
 - Add route types 3 and 4, opt-in per route (there are hundreds of bus routes).

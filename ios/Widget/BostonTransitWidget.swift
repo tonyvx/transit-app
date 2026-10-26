@@ -199,5 +199,8 @@ struct BostonTransitWidget: Widget {
 
 @main
 struct BostonTransitWidgets: WidgetBundle {
-    var body: some Widget { BostonTransitWidget() }
+    var body: some Widget {
+        BostonTransitWidget()
+        TripLiveActivityWidget()
+    }
 }

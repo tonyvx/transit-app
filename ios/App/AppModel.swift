@@ -198,6 +198,7 @@ final class AppModel {
     let location: LocationTracker
     let planner: PlannerModel
     let favorites = FavoritesModel()
+    let journey = JourneyTracker()
 
     func routeColor(_ routeId: String?) -> Color {
         if let routeId, let hex = routes[routeId]?.color, let v = UInt32(hex.dropFirst(), radix: 16) {
@@ -217,6 +218,18 @@ final class AppModel {
         enabledLines = p.lines
         enabledDirections = p.directions
         enabledRoutes = p.routes
+        location.onPingsUpdated = { [weak self] pings in
+            guard let self else { return }
+            Task {
+                await self.journey.evaluate(
+                    itinerary: self.planner.selected,
+                    vehicles: self.vehicles,
+                    pings: pings,
+                    routeNames: self.routes.mapValues(\.name),
+                    fetchedAt: self.fetchedAt ?? .distantPast
+                )
+            }
+        }
     }
 
     var myTrain: TrainMatch? { TrainMatcher.match(pings: location.pings, vehicles: vehicles) }
@@ -237,6 +250,8 @@ final class AppModel {
             do {
                 vehicles = try await provider.vehicles()
                 fetchedAt = Date()
+                await journey.evaluate(itinerary: planner.selected, vehicles: vehicles, pings: location.pings,
+                                       routeNames: routes.mapValues(\.name), fetchedAt: fetchedAt ?? Date())
                 if tick % 3 == 0 { await updateApproaching() }
                 if tick % 6 == 0 { alerts = try await provider.alerts(); await updateNearbyStarts() }
                 error = nil

@@ -29,11 +29,12 @@ The app can work out which train you are probably on, using your location on you
 
 TRIP PLANNER
 Plan door-to-door trips with transfers. Walk, bike, scooter or drive to your first station, and from your last one. Search an address, use your location, or drop a pin.
+When your GPS matches the live train on your selected itinerary, confirm you're aboard to start a Lock Screen Live Activity with the next stop and stops remaining.
 
 PRIVATE BY DESIGN
-No account and no server. Your location stays on your phone.
+No account and no server. Optional background trip tracking uses GPS only during a confirmed trip. Your location stays on your phone.
 
-Notes: Trip planner times are scheduled times, not live predictions. Bike and scooter times are estimates.
+Notes: Trip planner times use live MBTA predictions where available and scheduled times otherwise. Bike and scooter times are estimates. Always location access is optional and required for background Live Activity updates.
 
 Transit data is provided by the MBTA. This app is not affiliated with or endorsed by the MBTA.
 
@@ -41,7 +42,7 @@ Transit data is provided by the MBTA. This app is not affiliated with or endorse
 First release.
 
 ## Review notes
-No sign-in is needed. Allow location access when asked. The app works best when run in the Boston area. Data comes from the public MBTA V3 API. If the simulator or review location is outside Boston, set a location in Boston (for example, South Station).
+No sign-in is needed. Allow location access when asked. To demonstrate trip Live Activities, set a Boston location and run the app while a planned train is operating. Always location access is optional; without it, trip tracking updates while the app is open. The app works best in the Boston area. Data comes from the public MBTA V3 API. If the simulator or review location is outside Boston, set a location in Boston (for example, South Station).
 
 ## App Privacy answers (App Store Connect)
 - Data collected: **None.** Location is processed on the device only and is never sent to the developer or any third party. Address searches and directions use Apple Maps.
