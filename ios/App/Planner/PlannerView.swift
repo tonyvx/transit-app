@@ -24,10 +24,6 @@ struct PlannerView: View {
                     if planner.timeMode != .now {
                         DatePicker(planner.timeMode == .arrive ? "Arrive by" : "Depart at", selection: $planner.departAt)
                     }
-                    Button { Task { await planner.plan() } } label: {
-                        HStack { Text("Find trips"); if planner.isPlanning { ProgressView() } }
-                    }
-                    .disabled(planner.isPlanning || planner.from == nil || planner.to == nil)
                     if let e = planner.error { Text(e).foregroundStyle(.red).font(.callout) }
                 }
                 if !planner.results.isEmpty {
@@ -41,6 +37,25 @@ struct PlannerView: View {
                         }
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button {
+                    Task { await planner.plan() }
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Find trips")
+                        if planner.isPlanning { ProgressView().padding(.leading, 4) }
+                        Spacer()
+                    }
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(planner.isPlanning || planner.from == nil || planner.to == nil)
+                .accessibilityIdentifier("findTripsButton")
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(.bar)
             }
             .refreshable { if planner.from != nil, planner.to != nil { await planner.plan() } }
             .navigationTitle("Trip planner")
@@ -67,6 +82,15 @@ struct PlannerView: View {
                     planner.showSheet = false
                 } label: { Image(systemName: "mappin.and.ellipse") }
                     .buttonStyle(.borderless).accessibilityLabel("Drop a pin on the map")
+            }
+            if !text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               point?.name != text.wrappedValue {
+                Button {
+                    Task { await planner.search(field) }
+                } label: {
+                    Label("Search this location", systemImage: "magnifyingglass")
+                }
+                .accessibilityIdentifier(field == .from ? "searchFromLocationButton" : "searchToLocationButton")
             }
             if let point, point.name != text.wrappedValue { Label(point.name, systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green) }
             Picker(field == .from ? "Get to the station by" : "Get from the station by", selection: mode) {

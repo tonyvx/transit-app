@@ -8,6 +8,15 @@ final class GuideScreenshotTests: XCTestCase {
 
         attach(app, named: "Tony Phone - Live map")
 
+        let helpAndFeedback = app.buttons["helpAndFeedbackButton"]
+        XCTAssertTrue(helpAndFeedback.waitForExistence(timeout: 5))
+        helpAndFeedback.tap()
+        XCTAssertTrue(app.navigationBars["Help & feedback"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.links["reportBugLink"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.links["requestFeatureLink"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Terms and privacy"].exists)
+        app.buttons["Done"].tap()
+
         let stationButton = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Station ")
         ).firstMatch
@@ -23,6 +32,17 @@ final class GuideScreenshotTests: XCTestCase {
         XCTAssertTrue(plannerButton.waitForExistence(timeout: 10))
         plannerButton.tap()
         XCTAssertTrue(app.navigationBars["Trip planner"].waitForExistence(timeout: 10))
+        let findTripsButton = app.buttons["findTripsButton"]
+        XCTAssertTrue(findTripsButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(findTripsButton.isHittable)
+        let fromField = app.textFields["Address or place"].firstMatch
+        XCTAssertTrue(fromField.waitForExistence(timeout: 5))
+        fromField.tap()
+        fromField.typeText("South Station")
+        let searchLocationButton = app.buttons["searchFromLocationButton"]
+        XCTAssertTrue(searchLocationButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(searchLocationButton.isHittable)
+        XCTAssertTrue(findTripsButton.isHittable)
         attach(app, named: "Tony Phone - Trip planner")
 
         let done = app.buttons["Done"]

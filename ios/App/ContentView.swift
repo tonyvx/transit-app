@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var showAlerts = false
     @State private var showPreferences = false
+    @State private var showHelpAndFeedback = false
     @State private var showHowTo = false
     @AppStorage("hasSeenHowTo") private var hasSeenHowTo = false
     @State private var camera: MapCameraPosition = .region(
@@ -59,7 +60,11 @@ struct ContentView: View {
 
             VStack(spacing: 8) {
                 if model.preferences.lines.isEmpty { FirstRunCard { showHowTo = true } }
-                LegendView(onPreferences: { showPreferences = true }, onAlerts: { showAlerts = true })
+                LegendView(
+                    onPreferences: { showPreferences = true },
+                    onAlerts: { showAlerts = true },
+                    onHelp: { showHelpAndFeedback = true }
+                )
                 if let m = model.myTrain, let v = model.vehicles.first(where: { $0.id == m.vehicleId }) {
                     MyTrainCard(vehicle: v, match: m)
                 }
@@ -111,6 +116,7 @@ struct ContentView: View {
             if id != model.highlightedVehicleId { model.highlightedVehicleId = nil }
         }
         .sheet(isPresented: $showPreferences) { PreferencesView() }
+        .sheet(isPresented: $showHelpAndFeedback) { HelpAndFeedbackView() }
         .sheet(isPresented: $showHowTo, onDismiss: { model.location.start() }) { HowToView() }
         .alert(
             "Are you on this train?",
@@ -357,6 +363,7 @@ struct LegendView: View {
     @Environment(AppModel.self) private var model
     let onPreferences: () -> Void
     let onAlerts: () -> Void
+    let onHelp: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -381,6 +388,10 @@ struct LegendView: View {
                 .buttonStyle(.bordered).controlSize(.small)
                 .accessibilityLabel("Preferences")
                 .accessibilityIdentifier("preferencesButton")
+            Button(action: onHelp) { Image(systemName: "questionmark.circle") }
+                .buttonStyle(.bordered).controlSize(.small)
+                .accessibilityLabel("Help and feedback")
+                .accessibilityIdentifier("helpAndFeedbackButton")
             Button(action: onAlerts) {
                 Label("\(model.alerts.count)", systemImage: "exclamationmark.triangle.fill")
             }
@@ -493,15 +504,6 @@ struct PreferencesView: View {
                 } footer: {
                     Text("The widget shows the next trains at your first two favorites.")
                 }
-                Section {
-                    NavigationLink("How to use this app") { HowToView(embedded: true) }
-                }
-                Section("About and privacy") {
-                    Text("Transit data is provided by the MBTA (Massachusetts Bay Transportation Authority) through its V3 API.")
-                    Text("Your location stays on this phone. It is used to show your position, match you to a train and find nearby stations. If you enable background trip updates, GPS runs in the background only during a confirmed trip so the Lock Screen Live Activity can show stops remaining. Address searches and walking and driving directions in the trip planner are handled by Apple Maps. This app has no account and no server, and it doesn't share your location with anyone.")
-                    Text("Trip planner times use live MBTA predictions where available and the timetable otherwise. Bike and scooter times are estimates. Reminders are local notifications and don't react to delays.")
-                }
-                .font(.footnote)
             }
             .navigationTitle("My Preferences")
             .toolbar {

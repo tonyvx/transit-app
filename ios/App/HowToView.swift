@@ -21,7 +21,7 @@ struct HowToView: View {
         Step(id: "alerts", image: "howto-alerts", title: "4. Read alerts",
              text: "Tap the alert count. Alerts for your lines come first. Lines that start ahead of you show the drive time to get there. Other lines are collapsed."),
         Step(id: "planner", image: "howto-planner", title: "5. Plan a trip",
-             text: "Search an address, use your location, or drop a pin. Choose how you get to and from stations, then pick Leave now, Depart at or Arrive by. Results use live predictions when available and schedules otherwise. Tap a result to show it on the map. Save trips and set weekday reminders in the planner."),
+             text: "Enter an address and tap Search this location (or press Search on the keyboard), use your location, or drop a pin. Find trips stays at the bottom of the planner. Choose how you get to and from stations, then pick Leave now, Depart at or Arrive by. Results use live predictions when available and schedules otherwise. Tap a result to show it on the map. Save trips and set weekday reminders in the planner."),
         Step(id: "triptracking", image: "howto-triptracking", title: "6. Track a trip to your stop",
              text: "Trip tracking is optional. In Preferences, enable Allow background trip updates and choose Always in Location Services to get updates while the phone is locked. When GPS matches your selected train, confirm that you're aboard. The Lock Screen Live Activity shows the next stop and stops remaining. Allow notifications if you want a confirmation prompt while the app is in the background. End tracking in the app when your trip is over. Location stays on your phone."),
     ]

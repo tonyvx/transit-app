@@ -1,6 +1,6 @@
 # Boston Transit roadmap
 
-Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts, preferences, a first-run guide, a trip planner with live predictions, favorites, reminders, a widget and opt-in trip Live Activity tracking. 58 unit tests pass. The latest trip-tracking change still needs real-device validation.
+Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts, preferences, a first-run guide, a trip planner with live predictions, favorites, reminders, a widget, opt-in trip Live Activity tracking, and a Help & feedback hub. 58 unit tests pass; the planner search and persistent Find trips action, as well as the Help & feedback flow, have been exercised on Tony Phone.
 
 ## Done
 
@@ -8,17 +8,20 @@ Status today: on-device only (no backend). Live vehicles for rail and the Silver
 - Multi-transfer trip planner (rail and Silver Line) with walk, bike, scooter and car access.
 - Live predictions in the planner: live times and delay per leg, cancelled trains skipped, later connections follow the live arrival, "Live" badge, pull to refresh.
 - Planning for any day with published schedules, with Leave now, Depart at and Arrive by. This fixed a bug where every day except today found no trips.
+- Planner opens from a persistent trip-summary bar at the top of the map; typed locations have an explicit “Search this location” action, and “Find trips” stays visible while entering locations.
 - Favorite stations, saved trips, a weekday reminder per saved trip, and a one-off "Remind me to leave".
 - "Next trains" widget (small, medium, lock screen) that reads favorites through an App Group.
 - Trip boarding confirmation when the planned train ID, GPS matcher and rider/train proximity agree.
 - Lock Screen Live Activity with next stop and stops remaining, updated using fresh train positions and background GPS when opted in. Always access and background location are enabled only after explicit consent and only during a confirmed trip.
 - Unit tests for the router, matcher, filters, live predictions, arrive-by, favorites, trip confirmation and stop progression.
+- A Help & feedback screen outside Preferences provides the how-to guide, bug and feature request email links, MBTA developer information, and privacy details.
+- Refreshed all six how-to screenshots from Tony Phone, including the planner search cue.
 
 ## Next steps (in value-for-effort order)
 
 ### 1. Check the new features on the phone
-- Confirm on a real iPhone: the boarding prompt, Always location permission, Live Activity updating and ending at disembarkment, a leave reminder firing, and the widget. A free personal team may not honor the App Group, so favorites might not reach the widget.
-- Retake the how-to screenshots (they show old states), and add steps for favorites and the widget.
+- Still verify on a real trip: boarding prompt, Always location permission, Live Activity updates and ending at disembarkment. Also confirm a leave reminder fires and the widget receives favorites. A free personal team may not honor the App Group.
+- Verify the support email opens the composer with the intended subject and template on a device with an email account configured.
 
 ### 2. Finish the planner
 - Include MBTA alerts for the lines a trip uses, and warn when a leg has a "Suspension" or "Shuttle" alert.
@@ -29,6 +32,7 @@ Status today: on-device only (no backend). Live vehicles for rail and the Silver
 ### 3. Release
 - Paid Apple developer account, regenerated MBTA key (consider a small proxy so the key does not ship in the app), TestFlight, then the App Store.
 - Privacy policy, listing and screenshots are drafted in `docs/appstore`. Check the MBTA developer terms and that the name "Boston Transit" is free.
+- Pricing proposal: launch free with no paywall or subscription, then revisit after TestFlight feedback; this is not a final pricing decision.
 - Add error and offline states first, so a bad connection is not a blank screen.
 
 ### 4. Alerts and live updates

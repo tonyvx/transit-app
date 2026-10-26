@@ -5,7 +5,8 @@
 - [ ] Check "Boston Transit" is available; pick a fallback name
 - [ ] Regenerate the MBTA API key (the old one has been shared in chat and ships in the app); put it in `ios/Secrets.xcconfig`
 - [ ] Check the MBTA developer terms (attribution, branding, app-store use)
-- [ ] Host the privacy policy and support page at public URLs (GitHub Pages works); fill in [DATE] and [EMAIL]
+- [ ] Host the privacy policy and support page at public URLs (GitHub Pages works); fill in the privacy policy effective date
+- [ ] Verify the in-app bug report and feature request links open the correct email composer and prefilled template
 - [ ] Change the signing team in `ios/project.yml` to the paid team ID
 - [ ] Run on a real iPhone near Boston: map, station sheet, alerts, preferences, trip planner, location prompt
 - [ ] Take the screenshots listed in `listing.md`

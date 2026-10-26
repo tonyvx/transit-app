@@ -2,7 +2,9 @@
 
 Boston Transit is an independent app and is not affiliated with the MBTA.
 
-**Contact:** [EMAIL]
+**Contact:** [valantra.app@gmail.com](mailto:valantra.app@gmail.com)
+
+To report a bug or suggest a feature from the app, tap Help & feedback on the map and choose the matching option. The email opens with prompts to help describe the issue or idea. Please do not include personal or precise location information.
 
 ## Common questions
 - **No trains appear.** Open Preferences (gear icon), pick at least one line, then turn its chip on.

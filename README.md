@@ -8,8 +8,9 @@ Native SwiftUI iOS app (iOS 17+) with no backend. It calls the MBTA V3 API direc
 - Station arrivals per train, and a halo on a train you pick.
 - MBTA alerts grouped by relevance, with drive time to lines that start ahead of you.
 - On-device "you're probably on train X" matching.
-- Trip planner with transfers and walk, bike, scooter or car access legs (see below).
+- Trip planner with transfers and walk, bike, scooter or car access legs. Typed locations have an explicit search action, and Find trips stays visible while entering locations (see below).
 - Optional trip confirmation when your GPS and the live MBTA train match a selected itinerary. A Lock Screen Live Activity tracks the next stop and stops to disembarkment; background GPS requires opt-in Always access and stays on the phone.
+- Help & feedback from the map: how-to guide, bug reports, feature requests, MBTA terms information and privacy details.
 
 ## Favorites, reminders and widget
 - Star a station in its sheet to add it to your favorites. Save a planned trip and give it a weekday reminder. Tap "Remind me to leave" on a trip for a one-off notification. Reminders are local and don't react to delays.
@@ -29,8 +30,26 @@ They cover the trip router (direct rides, transfers, walking transfers, directio
 ## Before releasing
 - Regenerate the MBTA API key, since it ships in the app bundle.
 - Publish a privacy policy and fill in the App Privacy answers.
-- Check the MBTA developer terms for attribution (the app credits the MBTA under Preferences, About and privacy).
+- Check the MBTA developer terms for attribution (the app credits the MBTA in Help & feedback).
 - A personal signing team expires the profile every 7 days and can't use TestFlight or the App Store.
+- Finish real-device checks for trip confirmation, background location, Live Activity, reminders and the widget; then prepare the App Store screenshots and TestFlight build.
+
+## App Store launch and pricing
+
+The listing draft in [`docs/appstore/listing.md`](docs/appstore/listing.md) currently proposes a **free** launch. This is a recommendation to validate, not a final pricing decision.
+
+### Suggested 1.0 approach
+- Keep the core app free at launch, with no subscription or paywall. The current product is an on-device MBTA utility with no ongoing backend service, and keeping trip planning, live information and accessibility-independent basics available lowers the barrier to trying it.
+- Use TestFlight and rider feedback to learn which features people rely on before adding a paid tier. Do not treat downloads alone as evidence that a subscription is worthwhile.
+- Revisit monetization if the product adds meaningful ongoing costs or services, such as shared crowdsourcing, push alerts, historical reliability data or multi-city coverage.
+
+### Options to revisit
+- **Optional one-time tip:** a low-friction way for users to support development, without restricting core transit features.
+- **One-time Pro unlock:** only if a clearly separable set of durable premium features emerges; avoid splitting essential real-time or trip-planning capabilities.
+- **Subscription:** consider only if there is continuing value and operating cost to support it (for example, hosted crowd data and server-driven alerts). The current app does not provide those services.
+- **Paid upfront:** possible, but not the recommended first-release choice for a new local transit utility; it adds friction before riders can assess its usefulness.
+
+Before deciding, compare similar transit apps and their current prices in the target storefront, validate willingness to pay with riders, and account for Apple’s program and payment terms, taxes, and any future hosting costs. Update the listing price and any in-app purchase disclosures together when the decision is made.
 
 ## Run
 1. `cd ios && cp Secrets.example.xcconfig Secrets.xcconfig` and put your MBTA key in it (git-ignored).
