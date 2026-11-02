@@ -10,6 +10,9 @@ final class AppModel {
     private(set) var alerts: [TransitAlert] = []
     private(set) var routes: [String: RouteInfo] = [:]
     private(set) var branches: [Branch] = []
+    private(set) var routeTraces: [RouteTrace] = []
+    private(set) var routeMapError: String?
+    private(set) var routeDirections: [RouteDirection] = []
     private var stationsByKey: [String: [Station]] = [:]
     var highlightedVehicleId: String?
     var selectedStation: Station?
@@ -34,6 +37,96 @@ final class AppModel {
         p.save()
         applyPreferences()
         Task { await loadStations() }
+    }
+
+    /// Routes and branches currently favorited within a line.
+    private func favoriteChoices(for line: LineGroup) -> Set<String> {
+        guard preferences.lines.contains(line) else { return [] }
+        let all = routeChoiceIDs(for: line)
+        let selected = preferences.routes.intersection(all)
+        return selected.isEmpty ? all : selected
+    }
+
+    func isFavoriteRoute(_ routeId: String) -> Bool {
+        guard let line = LineGroup(routeId: routeId) else { return false }
+        let chosen = favoriteChoices(for: line)
+        let routeBranches = Set(branches(for: routeId).map(\.id))
+        return chosen.contains(routeId) || (!routeBranches.isEmpty && routeBranches.isSubset(of: chosen))
+    }
+
+    func isFavoriteBranch(_ branch: Branch) -> Bool {
+        guard let line = LineGroup(routeId: branch.routeId) else { return false }
+        let chosen = favoriteChoices(for: line)
+        return chosen.contains(branch.id) || chosen.contains(branch.routeId)
+    }
+
+    func toggleFavoriteRoute(_ routeId: String) {
+        guard let line = LineGroup(routeId: routeId) else { return }
+        var chosen = favoriteChoices(for: line)
+        let routeBranches = Set(branches(for: routeId).map(\.id))
+        if isFavoriteRoute(routeId) {
+            chosen.subtract(routeBranches.union([routeId]))
+        } else {
+            chosen.subtract(routeBranches)
+            chosen.insert(routeId)
+        }
+        saveFavoriteChoices(chosen, for: line)
+    }
+
+    func toggleFavoriteBranch(_ branch: Branch) {
+        guard let line = LineGroup(routeId: branch.routeId) else { return }
+        var chosen = favoriteChoices(for: line)
+        if isFavoriteBranch(branch) {
+            if chosen.remove(branch.routeId) != nil {
+                chosen.formUnion(branches(for: branch.routeId).map(\.id))
+            }
+            chosen.remove(branch.id)
+        } else {
+            chosen.insert(branch.id)
+        }
+        saveFavoriteChoices(chosen, for: line)
+    }
+
+    private func saveFavoriteChoices(_ chosen: Set<String>, for line: LineGroup) {
+        let all = routeChoiceIDs(for: line)
+        var updated = preferences
+        updated.routes.subtract(all)
+        if chosen.isEmpty {
+            updated.lines.remove(line)
+        } else {
+            updated.lines.insert(line)
+            // No explicit choices means the whole line.
+            if chosen != all { updated.routes.formUnion(chosen) }
+        }
+        savePreferences(updated)
+    }
+
+    private func routeChoiceIDs(for line: LineGroup) -> Set<String> {
+        Set(routes.keys.filter { LineGroup(routeId: $0) == line })
+            .union(branches.filter { LineGroup(routeId: $0.routeId) == line }.map(\.id))
+    }
+
+    var favoriteLineGroups: [LineGroup] {
+        preferences.lines.sorted { $0.rawValue < $1.rawValue }
+    }
+
+    func loadRouteTraces() async {
+        guard routes.isEmpty || routeTraces.isEmpty || routeDirections.isEmpty else { return }
+        do {
+            if routes.isEmpty {
+                let loadedRoutes = try await provider.routes()
+                routes = Dictionary(uniqueKeysWithValues: loadedRoutes.map { ($0.id, $0) })
+            }
+            async let traces = provider.routeTraces()
+            async let directions = provider.routeDirections(routeIds: routes.keys.sorted())
+            routeTraces = try await traces
+            routeDirections = try await directions
+            if routeTraces.isEmpty { routeMapError = "Route maps are unavailable." }
+            else { routeMapError = nil }
+        } catch {
+            if routeTraces.isEmpty { routeMapError = "Can't load route maps. Check your connection." }
+            else { routeMapError = "Can't load route direction details. Check your connection." }
+        }
     }
 
     /// Non-selected lines whose first stop is ahead of the rider, keyed by route id.
@@ -245,6 +338,7 @@ final class AppModel {
     func refreshLoop() async {
         if routes.isEmpty, let r = try? await provider.routes() { routes = Dictionary(uniqueKeysWithValues: r.map { ($0.id, $0) }) }
         if branches.isEmpty, let b = try? await provider.branches() { branches = b }
+        if routeTraces.isEmpty || routeDirections.isEmpty { await loadRouteTraces() }
         var tick = 0
         while !Task.isCancelled {
             do {
@@ -252,6 +346,7 @@ final class AppModel {
                 fetchedAt = Date()
                 await journey.evaluate(itinerary: planner.selected, vehicles: vehicles, pings: location.pings,
                                        routeNames: routes.mapValues(\.name), fetchedAt: fetchedAt ?? Date())
+                if tick % 6 == 0, routeTraces.isEmpty || routeDirections.isEmpty { await loadRouteTraces() }
                 if tick % 3 == 0 { await updateApproaching() }
                 if tick % 6 == 0 { alerts = try await provider.alerts(); await updateNearbyStarts() }
                 error = nil

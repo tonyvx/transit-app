@@ -86,7 +86,6 @@ final class LineGroupTests: XCTestCase {
         XCTAssertEqual(LineGroup(routeId: "746"), .silver)
         XCTAssertNil(LineGroup(routeId: "39"))
     }
-
     func testPreferencesStartWithEverythingOff() {
         let p = Preferences()
         XCTAssertTrue(p.lines.isEmpty)
@@ -98,5 +97,20 @@ final class LineGroupTests: XCTestCase {
     func testDirectionLabels() {
         XCTAssertEqual(Direction.inbound.label, "Inbound")
         XCTAssertEqual(Direction(rawValue: 0), .outbound)
+    }
+}
+
+final class EncodedPolylineTests: XCTestCase {
+    func testDecodesEncodedCoordinates() throws {
+        let coordinates = try XCTUnwrap(EncodedPolyline.decode("_p~iF~ps|U_ulLnnqC_mqNvxq`@"))
+        XCTAssertEqual(coordinates.count, 3)
+        XCTAssertEqual(coordinates[0].latitude, 38.5, accuracy: 0.00001)
+        XCTAssertEqual(coordinates[0].longitude, -120.2, accuracy: 0.00001)
+        XCTAssertEqual(coordinates[2].latitude, 43.252, accuracy: 0.00001)
+        XCTAssertEqual(coordinates[2].longitude, -126.453, accuracy: 0.00001)
+    }
+
+    func testRejectsMalformedEncodedCoordinates() {
+        XCTAssertNil(EncodedPolyline.decode("~"))
     }
 }

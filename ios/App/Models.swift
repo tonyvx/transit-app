@@ -1,5 +1,62 @@
 import Foundation
 
+struct MapCoordinate: Sendable {
+    let latitude: Double
+    let longitude: Double
+}
+
+struct RouteTrace: Identifiable, Sendable {
+    let id: String
+    let routeId: String
+    let line: LineGroup
+    let coordinates: [MapCoordinate]
+}
+
+struct RouteDirection: Identifiable, Sendable {
+    let routeId: String
+    let direction: Direction
+    let startStop: String
+    let endStop: String
+    var id: String { "\(routeId):\(direction.rawValue):\(startStop):\(endStop)" }
+}
+
+enum EncodedPolyline {
+    static func decode(_ encoded: String) -> [MapCoordinate]? {
+        let bytes = Array(encoded.utf8)
+        var index = 0
+        var latitude = 0
+        var longitude = 0
+        var coordinates: [MapCoordinate] = []
+
+        func nextDelta() -> Int? {
+            var result = 0
+            var shift = 0
+            while index < bytes.count, shift < 35 {
+                let byte = Int(bytes[index]) - 63
+                index += 1
+                guard (0...63).contains(byte) else { return nil }
+                result |= (byte & 0x1f) << shift
+                shift += 5
+                if byte < 0x20 {
+                    return result & 1 == 1 ? ~(result >> 1) : result >> 1
+                }
+            }
+            return nil
+        }
+
+        while index < bytes.count {
+            guard let latDelta = nextDelta(), let lonDelta = nextDelta() else { return nil }
+            latitude += latDelta
+            longitude += lonDelta
+            coordinates.append(MapCoordinate(
+                latitude: Double(latitude) / 100_000,
+                longitude: Double(longitude) / 100_000
+            ))
+        }
+        return coordinates.count >= 2 ? coordinates : nil
+    }
+}
+
 struct Vehicle: Identifiable, Sendable {
     let id: String
     let routeId: String
@@ -21,6 +78,8 @@ struct TransitAlert: Identifiable, Sendable {
     let effect: String
     let header: String
     let routeIds: [String]
+    /// MBTA direction ids the alert applies to; empty means both directions.
+    var directionIds: Set<Int> = []
 }
 
 struct RouteInfo: Identifiable, Sendable {

@@ -5,6 +5,8 @@ protocol TransitProvider: Sendable {
     func vehicles() async throws -> [Vehicle]
     func alerts() async throws -> [TransitAlert]
     func routes() async throws -> [RouteInfo]
+    func routeTraces() async throws -> [RouteTrace]
+    func routeDirections(routeIds: [String]) async throws -> [RouteDirection]
     func branches() async throws -> [Branch]
     func stations(routeIds: [String]) async throws -> [StopInfo]
     /// First stops of a route's trips in one direction.
@@ -18,6 +20,11 @@ protocol TransitProvider: Sendable {
     /// Live predicted times for a trip at its boarding and alighting stations.
     func liveTimes(tripId: String, from: String, to: String) async throws -> LiveTimes?
     func arrivals(stopId: String, routeIds: [String]) async throws -> [Arrival]
+}
+
+extension TransitProvider {
+    func routeTraces() async throws -> [RouteTrace] { [] }
+    func routeDirections(routeIds: [String]) async throws -> [RouteDirection] { [] }
 }
 
 struct StopInfo: Sendable {
@@ -56,13 +63,14 @@ struct MBTAClient: TransitProvider {
     private struct SchedDoc<I: Decodable>: Decodable { let data: [Res<SchedAttrs>]; let included: [Res<I>]? }
     private struct PredictionAttrs: Decodable { let arrival_time: String?; let departure_time: String?; let schedule_relationship: String? }
     private struct PatternAttrs: Decodable { let name: String; let direction_id: Int }
+    private struct ShapeAttrs: Decodable { let polyline: String }
 
     private struct VehicleAttrs: Decodable {
         let latitude: Double?, longitude: Double?, bearing: Double?, speed: Double?, direction_id: Int?
         let label: String?, current_status: String?, updated_at: String?
     }
     private struct AlertAttrs: Decodable {
-        struct Entity: Decodable { let route: String? }
+        struct Entity: Decodable { let route: String?; let direction_id: Int? }
         let effect: String, header: String, informed_entity: [Entity]
     }
     private struct RouteAttrs: Decodable { let long_name: String; let color: String? }
@@ -126,7 +134,8 @@ struct MBTAClient: TransitProvider {
     func alerts() async throws -> [TransitAlert] {
         try await fetchLines("/alerts", ["filter[activity]": "BOARD,EXIT,RIDE"], as: AlertAttrs.self).map {
             TransitAlert(id: $0.id, effect: $0.attributes.effect, header: $0.attributes.header,
-                         routeIds: Array(Set($0.attributes.informed_entity.compactMap(\.route))))
+                         routeIds: Array(Set($0.attributes.informed_entity.compactMap(\.route))),
+                         directionIds: Set($0.attributes.informed_entity.compactMap(\.direction_id)))
         }
     }
 
@@ -135,6 +144,60 @@ struct MBTAClient: TransitProvider {
         async let silver = fetch("/routes", ["filter[id]": Self.silverLine], as: RouteAttrs.self)
         return try await (rail + silver).map {
             RouteInfo(id: $0.id, name: $0.attributes.long_name, color: $0.attributes.color.map { "#\($0)" })
+        }
+    }
+
+    func routeTraces() async throws -> [RouteTrace] {
+        let allRoutes = try await routes().compactMap { route -> (LineGroup, String)? in
+            guard let line = LineGroup(routeId: route.id) else { return nil }
+            return (line, route.id)
+        }
+
+        return try await withThrowingTaskGroup(of: [RouteTrace].self) { group in
+            for (line, routeId) in allRoutes {
+                group.addTask {
+                    let shapes = try await fetch(
+                        "/shapes",
+                        ["filter[route]": routeId, "page[limit]": "20000"],
+                        as: ShapeAttrs.self
+                    )
+                    var seen = Set<String>()
+                    return shapes.compactMap { shape -> RouteTrace? in
+                        guard seen.insert(shape.attributes.polyline).inserted,
+                              let coordinates = EncodedPolyline.decode(shape.attributes.polyline) else { return nil }
+                        return RouteTrace(
+                            id: "\(routeId):\(shape.id)",
+                            routeId: routeId,
+                            line: line,
+                            coordinates: coordinates
+                        )
+                    }
+                }
+            }
+
+            var traces: [RouteTrace] = []
+            for try await result in group { traces.append(contentsOf: result) }
+            return traces.sorted { $0.id < $1.id }
+        }
+    }
+
+    func routeDirections(routeIds: [String]) async throws -> [RouteDirection] {
+        guard !routeIds.isEmpty else { return [] }
+        let patterns = try await fetch(
+            "/route_patterns",
+            ["filter[route]": routeIds.joined(separator: ","), "filter[canonical]": "true", "page[limit]": "20000"],
+            as: PatternAttrs.self
+        )
+        return patterns.compactMap { pattern in
+            guard let routeId = pattern.relationships?.route?.data?.id,
+                  let direction = Direction(rawValue: pattern.attributes.direction_id) else { return nil }
+            let stops = pattern.attributes.name.components(separatedBy: " - ")
+            guard let start = stops.first, let end = stops.last, stops.count > 1 else { return nil }
+            return RouteDirection(routeId: routeId, direction: direction, startStop: start, endStop: end)
+        }.sorted {
+            if $0.routeId != $1.routeId { return $0.routeId < $1.routeId }
+            if $0.direction != $1.direction { return $0.direction.rawValue < $1.direction.rawValue }
+            return $0.startStop < $1.startStop
         }
     }
 

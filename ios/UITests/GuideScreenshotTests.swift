@@ -8,15 +8,6 @@ final class GuideScreenshotTests: XCTestCase {
 
         attach(app, named: "Tony Phone - Live map")
 
-        let helpAndFeedback = app.buttons["helpAndFeedbackButton"]
-        XCTAssertTrue(helpAndFeedback.waitForExistence(timeout: 5))
-        helpAndFeedback.tap()
-        XCTAssertTrue(app.navigationBars["Help & feedback"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.links["reportBugLink"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.links["requestFeatureLink"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Terms and privacy"].exists)
-        app.buttons["Done"].tap()
-
         let stationButton = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Station ")
         ).firstMatch
@@ -49,14 +40,33 @@ final class GuideScreenshotTests: XCTestCase {
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
 
-        let preferences = app.buttons["preferencesButton"]
+        let preferences = app.buttons["moreButton"]
         XCTAssertTrue(preferences.waitForExistence(timeout: 5))
         preferences.tap()
-        XCTAssertTrue(app.navigationBars["My Preferences"].waitForExistence(timeout: 5))
-        attach(app, named: "Tony Phone - Preferences")
+        XCTAssertTrue(app.navigationBars["More"].waitForExistence(timeout: 5))
+        attach(app, named: "Tony Phone - More")
+        for _ in 0..<8 {
+            if app.links["reportBugLink"].exists { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(app.links["reportBugLink"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.links["requestFeatureLink"].exists)
+        let termsButton = app.buttons["termsPrivacyButton"]
+        XCTAssertTrue(termsButton.exists)
+        termsButton.tap()
+        XCTAssertTrue(app.navigationBars["Terms & Policy"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "independent app")
+        ).firstMatch.exists)
+        app.buttons["Done"].tap()
+        for _ in 0..<8 {
+            if app.links["MBTA website"].exists { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(app.links["MBTA website"].waitForExistence(timeout: 5))
         for _ in 0..<5 {
             if app.staticTexts["Trip tracking"].exists { break }
-            app.swipeUp()
+            app.swipeDown()
         }
         XCTAssertTrue(app.staticTexts["Trip tracking"].waitForExistence(timeout: 5))
         attach(app, named: "Tony Phone - Trip tracking preferences")

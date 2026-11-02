@@ -13,13 +13,13 @@ struct HowToView: View {
 
     private let steps: [Step] = [
         Step(id: "prefs", image: "howto-prefs", title: "1. Choose your lines",
-             text: "Tap the gear. Turn on the lines you ride, then optionally pick specific routes or branches. Choose Inbound or Outbound, and Save. Only the lines you pick appear as chips on the map."),
+             text: "Tap a route on the map to add it to your favorite lines and show its trains and stations. Tap it again to remove it. Choose Inbound or Outbound in More."),
         Step(id: "map", image: "howto-map", title: "2. Watch trains on the map",
-             text: "Tap a chip to show or hide a line for now. Tap a train to see its status. Tap Plan a trip at the top to open the planner. Trains that have already passed you are hidden unless you turn that off in Preferences."),
+             text: "All supported route paths are shown. Tap a route to show or hide its trains and stations. Tap a train to see its status. Use Plan a trip at the top to open the planner. Open More for settings and MBTA information. Trains that have already passed you are hidden unless you turn that off."),
         Step(id: "station", image: "howto-station", title: "3. Check a station",
              text: "Tap a station dot to see arrival times by train number. Tap the star in the station sheet to save it as a favorite. Tap a train number to close the sheet and highlight that train on the map with a halo."),
         Step(id: "alerts", image: "howto-alerts", title: "4. Read alerts",
-             text: "Tap the alert count. Alerts for your lines come first. Lines that start ahead of you show the drive time to get there. Other lines are collapsed."),
+             text: "Tap the alert count to the right of Plan a trip. Alerts for your lines come first. Lines that start ahead of you show the drive time to get there. Other lines are collapsed."),
         Step(id: "planner", image: "howto-planner", title: "5. Plan a trip",
              text: "Enter an address and tap Search this location (or press Search on the keyboard), use your location, or drop a pin. Find trips stays at the bottom of the planner. Choose how you get to and from stations, then pick Leave now, Depart at or Arrive by. Results use live predictions when available and schedules otherwise. Tap a result to show it on the map. Save trips and set weekday reminders in the planner."),
         Step(id: "triptracking", image: "howto-triptracking", title: "6. Track a trip to your stop",

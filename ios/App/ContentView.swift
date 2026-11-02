@@ -5,12 +5,33 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var showAlerts = false
     @State private var showPreferences = false
-    @State private var showHelpAndFeedback = false
+    @State private var selectedRouteId: String?
     @State private var showHowTo = false
     @AppStorage("hasSeenHowTo") private var hasSeenHowTo = false
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(center: .init(latitude: 42.3601, longitude: -71.0589),
                            span: .init(latitudeDelta: 0.6, longitudeDelta: 0.6)))
+
+    private func routeID(near c: CLLocationCoordinate2D, tolerance: Double) -> String? {
+        let k = cos(c.latitude * .pi / 180)
+        var best: (id: String, d: Double)?
+        for trace in model.routeTraces {
+            let pts = trace.coordinates
+            guard pts.count > 1 else { continue }
+            for i in 1..<pts.count {
+                let ax = pts[i-1].longitude * k, ay = pts[i-1].latitude
+                let bx = pts[i].longitude * k, by = pts[i].latitude
+                let px = c.longitude * k, py = c.latitude
+                let dx = bx - ax, dy = by - ay
+                let len = dx * dx + dy * dy
+                let t = len == 0 ? 0 : max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / len))
+                let d = hypot(px - (ax + t * dx), py - (ay + t * dy))
+                if d < best?.d ?? .infinity { best = (trace.routeId, d) }
+            }
+        }
+        guard let best, best.d <= tolerance * k else { return nil }
+        return best.id
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -18,6 +39,14 @@ struct ContentView: View {
             MapReader { proxy in
             Map(position: $camera, selection: $model.selectedVehicleId) {
                 UserAnnotation()
+                ForEach(model.routeTraces) { trace in
+                    MapPolyline(coordinates: trace.coordinates.map {
+                        CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                    })
+                    .stroke(trace.line.color.opacity(routeOpacity(trace)),
+                            style: StrokeStyle(lineWidth: isPlannedRoute(trace.routeId) ? 5 : 3, lineCap: .round))
+                    .tag("route:\(trace.routeId)")
+                }
                 if let it = model.planner.selected {
                     ForEach(it.legs) { leg in
                         MapPolyline(coordinates: leg.coordinates)
@@ -42,29 +71,43 @@ struct ContentView: View {
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
+                        .opacity(plannedRouteIDs.isEmpty || plannedLines.contains(st.line) ? 1 : 0.2)
                         .accessibilityLabel("Station \(st.name)")
                     }
                 }
                 ForEach(model.mapVehicles) { v in
                     Annotation(v.label ?? v.id, coordinate: .init(latitude: v.lat, longitude: v.lon)) {
                         TrainMarker(color: color(for: v.routeId), isMine: v.id == model.myTrain?.vehicleId, isHighlighted: v.id == model.highlightedVehicleId)
+                            .opacity(plannedRouteIDs.isEmpty || isPlannedRoute(v.routeId) ? 1 : 0.2)
                     }
                     .tag(v.id)
                 }
             }
             .mapControls { MapUserLocationButton(); MapCompass() }
             .onTapGesture { point in
-                if let c = proxy.convert(point, from: .local) { model.planner.dropPin(c) }
+                guard let c = proxy.convert(point, from: .local) else { return }
+                let edge = proxy.convert(CGPoint(x: point.x + 28, y: point.y), from: .local)
+                let tolerance = edge.map { abs($0.longitude - c.longitude) } ?? 0.002
+                if let id = routeID(near: c, tolerance: tolerance) {
+                    selectedRouteId = id
+                } else {
+                    model.planner.dropPin(c)
+                }
             }
             }
 
             VStack(spacing: 8) {
-                if model.preferences.lines.isEmpty { FirstRunCard { showHowTo = true } }
-                LegendView(
-                    onPreferences: { showPreferences = true },
-                    onAlerts: { showAlerts = true },
-                    onHelp: { showHelpAndFeedback = true }
-                )
+                HStack {
+                    Spacer(minLength: 0)
+                    Button { showPreferences = true } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title3)
+                            .padding(10)
+                            .background(.regularMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("Boston Transit settings")
+                    .accessibilityIdentifier("moreButton")
+                }
                 if let m = model.myTrain, let v = model.vehicles.first(where: { $0.id == m.vehicleId }) {
                     MyTrainCard(vehicle: v, match: m)
                 }
@@ -113,10 +156,27 @@ struct ContentView: View {
             }
         }
         .onChange(of: model.selectedVehicleId) { _, id in
+            if let id, id.hasPrefix("route:") {
+                selectedRouteId = String(id.dropFirst("route:".count))
+                model.selectedVehicleId = nil
+                return
+            }
             if id != model.highlightedVehicleId { model.highlightedVehicleId = nil }
         }
         .sheet(isPresented: $showPreferences) { PreferencesView() }
-        .sheet(isPresented: $showHelpAndFeedback) { HelpAndFeedbackView() }
+        .sheet(item: Binding(
+            get: { selectedRouteId.flatMap { model.routes[$0] } },
+            set: { selectedRouteId = $0?.id }
+        )) { route in
+            RouteDetailView(
+                route: route,
+                color: model.routeColor(route.id),
+                directions: model.routeDirections.filter { $0.routeId == route.id },
+                isFavorite: model.isFavoriteRoute(route.id),
+                toggleFavorite: { model.toggleFavoriteRoute(route.id) }
+            )
+            .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showHowTo, onDismiss: { model.location.start() }) { HowToView() }
         .alert(
             "Are you on this train?",
@@ -145,9 +205,32 @@ struct ContentView: View {
         }
     }
 
+    private var plannedRouteIDs: Set<String> {
+        Set(model.planner.selected?.transitLegs.compactMap(\.routeId) ?? [])
+    }
+
+    private var plannedLines: Set<LineGroup> {
+        Set(plannedRouteIDs.compactMap { routeId in
+            model.routes[routeId].flatMap { LineGroup(routeId: $0.id) }
+        })
+    }
+
+    private func isPlannedRoute(_ routeId: String) -> Bool {
+        plannedRouteIDs.contains(routeId)
+    }
+
+    private func routeOpacity(_ trace: RouteTrace) -> Double {
+        guard !plannedRouteIDs.isEmpty else {
+            return model.preferences.lines.contains(trace.line) ? 0.9 : 0.35
+        }
+        return isPlannedRoute(trace.routeId) ? 0.95 : 0.16
+    }
+
     private var statusBar: some View {
         Group {
             if let e = model.error {
+                Text(e).foregroundStyle(.white).padding(6).background(.red, in: Capsule())
+            } else if let e = model.routeMapError {
                 Text(e).foregroundStyle(.white).padding(6).background(.red, in: Capsule())
             } else if let t = model.fetchedAt {
                 Text("Updated \(t, style: .time)").font(.caption).padding(6).background(.regularMaterial, in: Capsule())
@@ -157,39 +240,50 @@ struct ContentView: View {
     }
 
     private var plannerSummaryBar: some View {
-        Button { model.planner.showSheet = true } label: {
-            HStack(spacing: 10) {
-                Image(systemName: model.planner.selected == nil ? "arrow.triangle.turn.up.right.diamond.fill" : "tram.fill")
-                    .foregroundStyle(Color.accentColor)
-                if let itinerary = model.planner.selected,
-                   let from = model.planner.from,
-                   let to = model.planner.to {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(from.name) → \(to.name)")
+        HStack(spacing: 8) {
+            Button { model.planner.showSheet = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: model.planner.selected == nil ? "arrow.triangle.turn.up.right.diamond.fill" : "tram.fill")
+                        .foregroundStyle(Color.accentColor)
+                    if let itinerary = model.planner.selected,
+                       let from = model.planner.from,
+                       let to = model.planner.to {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(from.name) → \(to.name)")
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                            Text("Leave \(itinerary.leaveBy, style: .time) · arrive \(itinerary.arriveAt, style: .time) · \(transferSummary(itinerary.transfers))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    } else {
+                        Text("Plan a trip")
                             .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Text("Leave \(itinerary.leaveBy, style: .time) · arrive \(itinerary.arriveAt, style: .time) · \(transferSummary(itinerary.transfers))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        Spacer()
                     }
-                } else {
-                    Text("Plan a trip")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("plannerSummaryButton")
+            .frame(maxWidth: .infinity)
+
+            Button { showAlerts = true } label: {
+                Label("\(model.alerts.count)", systemImage: "exclamationmark.triangle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .accessibilityLabel("\(model.alerts.count) alerts")
+            .accessibilityIdentifier("alertsButton")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("plannerSummaryButton")
         .padding(.top, 4)
     }
 
@@ -302,18 +396,33 @@ struct AlertsView: View {
 
     var body: some View {
         let g = model.alertGroups
+        let inbound = g.mine.filter { $0.directionIds == [Direction.inbound.rawValue] }
+        let outbound = g.mine.filter { $0.directionIds == [Direction.outbound.rawValue] }
+        let both = g.mine.filter { $0.directionIds != [Direction.inbound.rawValue] && $0.directionIds != [Direction.outbound.rawValue] }
+        let other = g.ahead + g.other
         NavigationStack {
             List {
-                if !g.mine.isEmpty {
-                    Section("My lines") { ForEach(g.mine) { AlertRow(alert: $0) } }
+                if !inbound.isEmpty {
+                    Section("Inbound") { ForEach(inbound) { AlertRow(alert: $0) } }
                 }
-                if !g.ahead.isEmpty {
-                    Section("Starting ahead of you") { ForEach(g.ahead) { AlertRow(alert: $0) } }
+                if !outbound.isEmpty {
+                    Section("Outbound") { ForEach(outbound) { AlertRow(alert: $0) } }
                 }
-                if !g.other.isEmpty {
+                if !both.isEmpty {
+                    Section("Both directions") { ForEach(both) { AlertRow(alert: $0) } }
+                }
+                if g.mine.isEmpty {
                     Section {
-                        DisclosureGroup("Other lines (\(g.other.count))", isExpanded: $showOther) {
-                            ForEach(g.other) { AlertRow(alert: $0) }
+                        Text(model.preferences.lines.isEmpty
+                             ? "Favorite a line to see its alerts here."
+                             : "No alerts on your favorite lines.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !other.isEmpty {
+                    Section {
+                        DisclosureGroup("Other lines (\(other.count))", isExpanded: $showOther) {
+                            ForEach(other) { AlertRow(alert: $0) }
                         }
                     }
                 }
@@ -329,14 +438,29 @@ struct AlertRow: View {
     @Environment(AppModel.self) private var model
     let alert: TransitAlert
 
+    private var color: Color {
+        if let id = alert.routeIds.first(where: { LineGroup(routeId: $0) != nil }) {
+            if model.routes[id]?.color != nil { return model.routeColor(id) }
+            if let line = LineGroup(routeId: id) { return line.color }
+        }
+        return .gray
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(alert.effect.replacingOccurrences(of: "_", with: " ").capitalized).font(.caption).foregroundStyle(.secondary)
+            Text(alert.effect.replacingOccurrences(of: "_", with: " ").capitalized)
+                .font(.caption.bold())
+                .foregroundStyle(color)
             Text(alert.header)
             if let start = model.nearbyStart(for: alert) {
                 Label(driveText(start), systemImage: "car.fill").font(.caption.bold()).foregroundStyle(.blue)
             }
         }
+        .padding(.leading, 8)
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 4)
+        }
+        .listRowBackground(color.opacity(0.12))
     }
 
     private func driveText(_ s: NearbyStart) -> String {
@@ -362,8 +486,6 @@ extension LineGroup {
 struct LegendView: View {
     @Environment(AppModel.self) private var model
     let onPreferences: () -> Void
-    let onAlerts: () -> Void
-    let onHelp: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -388,16 +510,6 @@ struct LegendView: View {
                 .buttonStyle(.bordered).controlSize(.small)
                 .accessibilityLabel("Preferences")
                 .accessibilityIdentifier("preferencesButton")
-            Button(action: onHelp) { Image(systemName: "questionmark.circle") }
-                .buttonStyle(.bordered).controlSize(.small)
-                .accessibilityLabel("Help and feedback")
-                .accessibilityIdentifier("helpAndFeedbackButton")
-            Button(action: onAlerts) {
-                Label("\(model.alerts.count)", systemImage: "exclamationmark.triangle.fill")
-            }
-            .buttonStyle(.borderedProminent).controlSize(.small)
-            .accessibilityLabel("\(model.alerts.count) alerts")
-            .accessibilityIdentifier("alertsButton")
             }
             HStack(spacing: 8) {
                 ForEach(Direction.allCases) { d in
@@ -434,41 +546,52 @@ struct PreferencesView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var draft = Preferences()
+    @State private var showTerms = false
 
     var body: some View {
         NavigationStack {
-            Form {
-                ForEach(LineGroup.allCases) { line in
-                    Section {
-                        Toggle(isOn: binding(line)) {
-                            Label(line.rawValue, systemImage: "circle.fill").foregroundStyle(line.color).font(.headline)
+            List {
+                Section("Feedback") {
+                    if let url = feedbackURL(
+                        subject: "Boston Transit bug report",
+                        body: "What happened?\n\nWhat did you expect?\n\nSteps to reproduce:\n\nPlease avoid including personal or precise location information."
+                    ) {
+                        Link(destination: url) {
+                            Label("Report a bug", systemImage: "ladybug")
                         }
-                        if draft.lines.contains(line) {
-                            let routes = model.routes(in: line)
-                            ForEach(routes) { r in
-                                Toggle(r.name, isOn: routeBinding(r.id)).padding(.leading, 24)
-                                ForEach(model.branches(for: r.id)) { b in
-                                    Toggle(b.name, isOn: routeBinding(b.id)).padding(.leading, 48)
-                                }
-                            }
-                            if routes.isEmpty {
-                                Text("Loading routes…").font(.footnote).foregroundStyle(.secondary).padding(.leading, 24)
-                            }
-                        }
-                    } header: {
-                        if line == LineGroup.allCases.first { Text("Lines and routes") }
-                    } footer: {
-                        if draft.lines.contains(line) { Text("Select specific routes or branches to show only those. None selected shows every \(line.rawValue) route.") }
+                        .accessibilityIdentifier("reportBugLink")
                     }
+                    if let url = feedbackURL(
+                        subject: "Boston Transit feature request",
+                        body: "What would you like the app to do?\n\nHow would it help your transit trip?\n\nPlease avoid including personal or precise location information."
+                    ) {
+                        Link(destination: url) {
+                            Label("Request a feature", systemImage: "lightbulb")
+                        }
+                        .accessibilityIdentifier("requestFeatureLink")
+                    }
+                    Text("Opens your email app to send feedback to valantra.app@gmail.com.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
-                Section("Directions") {
-                    ForEach(Direction.allCases) { d in Toggle(d.label, isOn: binding(d)) }
-                    Text("With no direction selected, both directions are shown.").font(.footnote).foregroundStyle(.secondary)
+                Section("Terms & Policy") {
+                    Button {
+                        showTerms = true
+                    } label: {
+                        Label("Terms and privacy", systemImage: "hand.raised")
+                    }
+                    .accessibilityIdentifier("termsPrivacyButton")
                 }
-                Section {
-                    Toggle("Only trains that haven't passed me", isOn: $draft.onlyApproaching)
-                } footer: {
-                    Text("Uses your location and the next stop predictions at your nearest station on each line. Direction selection above still applies.")
+                Section("How to use") {
+                    NavigationLink {
+                        HowToView(embedded: true)
+                    } label: {
+                        Label("Open the guide", systemImage: "book")
+                    }
+                    .accessibilityIdentifier("openGuideLink")
+                    Text("Plan trips, read alerts, and choose routes directly on the map.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 Section("Trip tracking") {
                     Toggle(isOn: Binding(
@@ -504,24 +627,82 @@ struct PreferencesView: View {
                 } footer: {
                     Text("The widget shows the next trains at your first two favorites.")
                 }
+                Section("Favorite lines") {
+                    if model.favoriteLineGroups.isEmpty {
+                        Text("No favorite lines yet.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(model.favoriteLineGroups) { line in
+                                    Text(line.rawValue)
+                                        .font(.footnote.bold())
+                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                        .background(line.color, in: Capsule())
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                    }
+                    NavigationLink {
+                        FavoriteLinesEditor()
+                    } label: {
+                        Label("Edit favorite lines", systemImage: "star")
+                    }
+                    .accessibilityIdentifier("editFavoriteLinesLink")
+                }
+                Section("Directions") {
+                    ForEach(Direction.allCases) { d in Toggle(d.label, isOn: binding(d)) }
+                    Text("With no direction selected, both directions are shown.").font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
+                    Toggle("Only trains that haven't passed me", isOn: $draft.onlyApproaching)
+                } footer: {
+                    Text("Uses your location and the next stop predictions at your nearest station on each line. Direction selection above still applies.")
+                }
+                Section("General MBTA Information & Support") {
+                    officialLink("MBTA website", icon: "tram", url: "https://www.mbta.com")
+                    officialLink("Service alerts", icon: "exclamationmark.triangle", url: "https://www.mbta.com/alerts")
+                    officialLink("Fares and passes", icon: "ticket", url: "https://www.mbta.com/fares")
+                    officialLink("Accessibility", icon: "accessibility", url: "https://www.mbta.com/accessibility")
+                    officialLink("Contact MBTA support", icon: "questionmark.circle", url: "https://www.mbta.com/customer-support")
+                    officialLink("Developer information", icon: "curlybraces", url: "https://www.mbta.com/developers")
+                }
             }
-            .navigationTitle("My Preferences")
+            .listStyle(.insetGrouped)
+            .navigationTitle("Boston Transit")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("Save") { model.savePreferences(draft); dismiss() } }
             }
             .onAppear { draft = model.preferences }
+            .sheet(isPresented: $showTerms) {
+                TermsPrivacyView()
+                    .presentationDetents([.medium, .large])
+            }
         }
     }
 
-    private func binding(_ line: LineGroup) -> Binding<Bool> {
-        Binding(get: { draft.lines.contains(line) },
-                set: { if $0 { draft.lines.insert(line) } else { draft.lines.remove(line) } })
+    private func feedbackURL(subject: String, body: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = "valantra.app@gmail.com"
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject),
+            URLQueryItem(name: "body", value: body)
+        ]
+        return components.url
     }
 
-    private func routeBinding(_ id: String) -> Binding<Bool> {
-        Binding(get: { draft.routes.contains(id) },
-                set: { if $0 { draft.routes.insert(id) } else { draft.routes.remove(id) } })
+    @ViewBuilder
+    private func officialLink(_ title: String, icon: String, url: String) -> some View {
+        if let destination = URL(string: url) {
+            Link(destination: destination) {
+                Label(title, systemImage: icon)
+            }
+        }
     }
 
     private func binding(_ d: Direction) -> Binding<Bool> {

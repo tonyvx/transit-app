@@ -1,41 +1,11 @@
 import SwiftUI
 
-struct HelpAndFeedbackView: View {
+struct TermsPrivacyView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("How to use") {
-                    NavigationLink("Open the guide") {
-                        HowToView(embedded: true)
-                    }
-                }
-
-                Section("Feedback") {
-                    if let url = feedbackURL(
-                        subject: "Boston Transit bug report",
-                        body: "What happened?\n\nWhat did you expect?\n\nSteps to reproduce:\n\nPlease avoid including personal or precise location information."
-                    ) {
-                        Link(destination: url) {
-                            Label("Report a bug", systemImage: "ladybug")
-                        }
-                        .accessibilityIdentifier("reportBugLink")
-                    }
-                    if let url = feedbackURL(
-                        subject: "Boston Transit feature request",
-                        body: "What would you like the app to do?\n\nHow would it help your transit trip?\n\nPlease avoid including personal or precise location information."
-                    ) {
-                        Link(destination: url) {
-                            Label("Request a feature", systemImage: "lightbulb")
-                        }
-                        .accessibilityIdentifier("requestFeatureLink")
-                    }
-                    Text("Opens your email app to send feedback to valantra.app@gmail.com.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
                 Section("Terms and privacy") {
                     Text("Boston Transit is an independent app, not affiliated with or endorsed by the MBTA. Transit data is provided by the MBTA through its V3 API and is subject to MBTA terms and availability.")
                     if let url = URL(string: "https://www.mbta.com/developers") {
@@ -48,7 +18,7 @@ struct HelpAndFeedbackView: View {
                 }
                 .font(.footnote)
             }
-            .navigationTitle("Help & feedback")
+            .navigationTitle("Terms & Policy")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -56,16 +26,5 @@ struct HelpAndFeedbackView: View {
                 }
             }
         }
-    }
-
-    private func feedbackURL(subject: String, body: String) -> URL? {
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = "valantra.app@gmail.com"
-        components.queryItems = [
-            URLQueryItem(name: "subject", value: subject),
-            URLQueryItem(name: "body", value: body)
-        ]
-        return components.url
     }
 }
