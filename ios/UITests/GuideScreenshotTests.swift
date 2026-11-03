@@ -81,6 +81,67 @@ final class GuideScreenshotTests: XCTestCase {
     }
 
     @MainActor
+    func testCaptureHowToImages() throws {
+        let app = XCUIApplication()
+        app.launch()
+        if app.navigationBars["How to use"].waitForExistence(timeout: 3) { app.buttons["Done"].tap() }
+
+        let gear = app.buttons["moreButton"]
+        XCTAssertTrue(gear.waitForExistence(timeout: 10))
+        gear.tap()
+        let edit = app.buttons["editFavoriteLinesLink"]
+        for _ in 0..<8 {
+            if edit.exists && edit.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        edit.tap()
+        XCTAssertTrue(app.navigationBars["Favorite lines"].waitForExistence(timeout: 5))
+        for name in ["Red Line", "Orange Line"] {
+            let toggle = app.switches[name]
+            for _ in 0..<12 {
+                if toggle.exists && toggle.isHittable { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5), name)
+            if (toggle.value as? String) == "0" { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap() }
+        }
+        attach(app, named: "howto-prefs")
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["Save"].tap()
+        sleep(8)
+        attach(app, named: "howto-map")
+
+        let station = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Station ")).firstMatch
+        if station.waitForExistence(timeout: 15) {
+            station.tap()
+            sleep(4)
+            attach(app, named: "howto-station")
+            app.buttons["Done"].tap()
+        }
+
+        let alerts = app.buttons["alertsButton"]
+        if alerts.waitForExistence(timeout: 5) {
+            alerts.tap()
+            sleep(2)
+            attach(app, named: "howto-alerts")
+            app.buttons["Done"].tap()
+        }
+
+        app.buttons["plannerSummaryButton"].tap()
+        XCTAssertTrue(app.navigationBars["Trip planner"].waitForExistence(timeout: 10))
+        attach(app, named: "howto-planner")
+        app.buttons["Done"].tap()
+
+        gear.tap()
+        for _ in 0..<8 {
+            if app.switches.firstMatch.exists { break }
+            app.swipeUp()
+        }
+        attach(app, named: "howto-triptracking")
+    }
+
+    @MainActor
     private func attach(_ app: XCUIApplication, named name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

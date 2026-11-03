@@ -661,7 +661,14 @@ struct PreferencesView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { model.savePreferences(draft); dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Save") {
+                    // Favorite lines save immediately in their editor, so keep those rather than the draft's copy.
+                    var saved = draft
+                    saved.lines = model.preferences.lines
+                    saved.routes = model.preferences.routes
+                    model.savePreferences(saved)
+                    dismiss()
+                } }
             }
             .onAppear { draft = model.preferences }
             .sheet(isPresented: $showTerms) {
