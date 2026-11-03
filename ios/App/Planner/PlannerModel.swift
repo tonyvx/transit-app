@@ -30,6 +30,8 @@ final class PlannerModel {
     private let provider: TransitProvider
     private let location: LocationTracker
     private var network: TransitNetwork?
+    private var activePlanRequest: UUID?
+    private var formRevision = 0
 
     init(provider: TransitProvider, location: LocationTracker) {
         self.provider = provider
@@ -37,6 +39,12 @@ final class PlannerModel {
     }
 
     var selected: Itinerary? { results.first { $0.id == selectedId } ?? results.first }
+
+    var hasPlanContent: Bool {
+        from != nil || to != nil
+            || !fromText.isEmpty || !toText.isEmpty
+            || !results.isEmpty || error != nil || pickTarget != nil || isPlanning
+    }
 
     func useMyLocation(_ field: PlanField) {
         guard let p = location.pings.last else { error = "Current location unavailable."; return }
@@ -80,39 +88,80 @@ final class PlannerModel {
         (fromMode, toMode) = (toMode, fromMode)
     }
 
+    func clear() {
+        formRevision += 1
+        activePlanRequest = nil
+        isPlanning = false
+        from = nil
+        to = nil
+        fromText = ""
+        toText = ""
+        fromMode = .walk
+        toMode = .walk
+        timeMode = .now
+        departAt = Date()
+        results = []
+        selectedId = nil
+        error = nil
+        pickTarget = nil
+    }
+
     func search(_ field: PlanField) async {
         let text = field == .from ? fromText : toText
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let revision = formRevision
         let req = MKLocalSearch.Request()
         req.naturalLanguageQuery = text
         req.region = MKCoordinateRegion(center: .init(latitude: 42.36, longitude: -71.06),
                                         span: .init(latitudeDelta: 1.2, longitudeDelta: 1.2))
         do {
-            guard let item = try await MKLocalSearch(request: req).start().mapItems.first else { error = "No match for \(text)."; return }
+            let item = try await MKLocalSearch(request: req).start().mapItems.first
+            guard formRevision == revision else { return }
+            guard let item else { error = "No match for \(text)."; return }
             let c = item.placemark.coordinate
             error = nil
             set(PlanPoint(name: item.name ?? text, lat: c.latitude, lon: c.longitude), field)
-        } catch { self.error = "Search failed." }
+        } catch {
+            if formRevision == revision { self.error = "Search failed." }
+        }
     }
 
     func plan() async {
         guard let a = from, let b = to else { error = "Choose a start and destination."; return }
+        let requestID = UUID()
+        activePlanRequest = requestID
         isPlanning = true
         error = nil
         results = []
-        defer { isPlanning = false }
+        selectedId = nil
+        defer {
+            if activePlanRequest == requestID {
+                activePlanRequest = nil
+                isPlanning = false
+            }
+        }
         do {
-            if network == nil { network = try await provider.network() }
+            if network == nil {
+                let loadedNetwork = try await provider.network()
+                guard activePlanRequest == requestID else { return }
+                network = loadedNetwork
+            }
             guard let network else { return }
             let planner = TripPlanner(provider: provider, network: network, accessLeg: PlannerModel.routedAccessLeg)
+            let plannedResults: [Itinerary]
             switch timeMode {
-            case .now: results = try await planner.plan(from: a, to: b, fromMode: fromMode, toMode: toMode, departAt: Date())
-            case .depart: results = try await planner.plan(from: a, to: b, fromMode: fromMode, toMode: toMode, departAt: max(departAt, Date()))
-            case .arrive: results = try await planner.plan(from: a, to: b, fromMode: fromMode, toMode: toMode, arriveBy: departAt)
+            case .now: plannedResults = try await planner.plan(from: a, to: b, fromMode: fromMode, toMode: toMode, departAt: Date())
+            case .depart: plannedResults = try await planner.plan(from: a, to: b, fromMode: fromMode, toMode: toMode, departAt: max(departAt, Date()))
+            case .arrive: plannedResults = try await planner.plan(from: a, to: b, fromMode: fromMode, toMode: toMode, arriveBy: departAt)
             }
-            selectedId = results.first?.id
-        } catch let e as PlannerError { error = e.localizedDescription }
-        catch { self.error = "Couldn't load transit data. Check your connection." }
+            guard activePlanRequest == requestID else { return }
+            results = plannedResults
+            selectedId = plannedResults.first?.id
+        } catch let e as PlannerError {
+            if activePlanRequest == requestID { error = e.localizedDescription }
+        } catch {
+            if activePlanRequest == requestID { self.error = "Couldn't load transit data. Check your connection." }
+        }
     }
 
     /// Uses Apple Maps for walking and driving. Apple has no bike or scooter routing, so those use the walking distance at typical speed.

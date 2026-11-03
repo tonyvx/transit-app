@@ -99,6 +99,44 @@ final class AppModel {
         preferences.lines.sorted { $0.rawValue < $1.rawValue }
     }
 
+    var favoriteLineLabels: [FavoriteLineLabel] {
+        favoriteLineGroups.flatMap { line in
+            let allChoices = routeChoiceIDs(for: line)
+            let selected = preferences.routes.intersection(allChoices)
+            guard !selected.isEmpty else {
+                let title = line == .commuter ? "Commuter Rail" : "\(line.rawValue) Line"
+                return [FavoriteLineLabel(id: line.rawValue, title: title, line: line)]
+            }
+            return selected.sorted().map { choice in
+                if let branch = branches.first(where: { $0.id == choice }) {
+                    let routeName = routes[branch.routeId]?.name ?? branch.routeId
+                    return FavoriteLineLabel(
+                        id: choice,
+                        title: "\(routeName) · \(branch.name)",
+                        line: line
+                    )
+                }
+                return FavoriteLineLabel(
+                    id: choice,
+                    title: routes[choice]?.name ?? choice,
+                    line: line
+                )
+            }
+        }
+    }
+
+    private var favoriteRouteIDs: Set<String> {
+        Set(preferences.lines.flatMap { line in
+            let choices = favoriteChoices(for: line)
+            return routes(in: line).compactMap { route in
+                let routeBranches = branches(for: route.id)
+                return choices.contains(route.id) || routeBranches.contains(where: { choices.contains($0.id) })
+                    ? route.id
+                    : nil
+            }
+        })
+    }
+
     func loadRouteTraces() async {
         guard routes.isEmpty || routeTraces.isEmpty || routeDirections.isEmpty else { return }
         if routeTraces.isEmpty, let cached = RouteCache.load() {
@@ -142,8 +180,7 @@ final class AppModel {
     var alertGroups: (mine: [TransitAlert], ahead: [TransitAlert], other: [TransitAlert]) {
         var mine: [TransitAlert] = [], ahead: [TransitAlert] = [], other: [TransitAlert] = []
         for a in alerts {
-            let groups = Set(a.routeIds.compactMap(LineGroup.init(routeId:)))
-            if groups.isEmpty || !groups.isDisjoint(with: preferences.lines) { mine.append(a) }
+            if a.affectsAnyRoute(in: favoriteRouteIDs) { mine.append(a) }
             else if a.routeIds.contains(where: { nearbyStarts[$0] != nil }) { ahead.append(a) }
             else { other.append(a) }
         }
@@ -237,9 +274,10 @@ final class AppModel {
     }
 
     private func routeIdsToShow(in line: LineGroup) -> [String] {
-        let all = routes(in: line).map(\.id)
-        let chosen = all.filter(preferences.routes.contains)
-        return chosen.isEmpty ? all : chosen
+        let choices = favoriteChoices(for: line)
+        return routes(in: line).filter { route in
+            choices.contains(route.id) || branches(for: route.id).contains(where: { choices.contains($0.id) })
+        }.map(\.id)
     }
 
     private func stationKey(for line: LineGroup) -> String { "\(line.rawValue):\(routeIdsToShow(in: line).joined(separator: ","))" }

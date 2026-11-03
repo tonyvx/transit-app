@@ -531,7 +531,6 @@ extension LineGroup {
 struct PreferencesView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @State private var draft = Preferences()
     @State private var showTerms = false
 
     var body: some View {
@@ -621,11 +620,11 @@ struct PreferencesView: View {
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(model.favoriteLineGroups) { line in
-                                    Text(line.rawValue)
+                                ForEach(model.favoriteLineLabels) { favorite in
+                                    Text(favorite.title)
                                         .font(.footnote.bold())
                                         .padding(.horizontal, 10).padding(.vertical, 5)
-                                        .background(line.color, in: Capsule())
+                                        .background(favorite.line.color, in: Capsule())
                                         .foregroundStyle(.white)
                                 }
                             }
@@ -643,7 +642,7 @@ struct PreferencesView: View {
                     Text("With no direction selected, both directions are shown.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section {
-                    Toggle("Only trains that haven't passed me", isOn: $draft.onlyApproaching)
+                    Toggle("Only trains that haven't passed me", isOn: onlyApproachingBinding)
                 } footer: {
                     Text("Uses your location and the next stop predictions at your nearest station on each line. Direction selection above still applies.")
                 }
@@ -660,17 +659,8 @@ struct PreferencesView: View {
             .navigationTitle("Boston Transit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") {
-                    // Favorite lines save immediately in their editor, so keep those rather than the draft's copy.
-                    var saved = draft
-                    saved.lines = model.preferences.lines
-                    saved.routes = model.preferences.routes
-                    model.savePreferences(saved)
-                    dismiss()
-                } }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .onAppear { draft = model.preferences }
             .sheet(isPresented: $showTerms) {
                 TermsPrivacyView()
                     .presentationDetents([.medium, .large])
@@ -699,8 +689,26 @@ struct PreferencesView: View {
     }
 
     private func binding(_ d: Direction) -> Binding<Bool> {
-        Binding(get: { draft.directions.contains(d) },
-                set: { if $0 { draft.directions.insert(d) } else { draft.directions.remove(d) } })
+        Binding(
+            get: { model.preferences.directions.contains(d) },
+            set: { isEnabled in
+                var updated = model.preferences
+                if isEnabled { updated.directions.insert(d) }
+                else { updated.directions.remove(d) }
+                model.savePreferences(updated)
+            }
+        )
+    }
+
+    private var onlyApproachingBinding: Binding<Bool> {
+        Binding(
+            get: { model.preferences.onlyApproaching },
+            set: { isEnabled in
+                var updated = model.preferences
+                updated.onlyApproaching = isEnabled
+                model.savePreferences(updated)
+            }
+        )
     }
 }
 

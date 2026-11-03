@@ -39,20 +39,30 @@ struct PlannerView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Button {
-                    Task { await planner.plan() }
-                } label: {
-                    HStack {
-                        Spacer()
-                        Text("Find trips")
-                        if planner.isPlanning { ProgressView().padding(.leading, 4) }
-                        Spacer()
+                HStack(spacing: 12) {
+                    Button {
+                        planner.swap()
+                    } label: {
+                        Label("Swap", systemImage: "arrow.up.arrow.down")
                     }
-                    .frame(minHeight: 44)
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("swapTripButton")
+
+                    Button {
+                        Task { await planner.plan() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Find trips")
+                            if planner.isPlanning { ProgressView().padding(.leading, 4) }
+                            Spacer()
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(planner.isPlanning || planner.from == nil || planner.to == nil)
+                    .accessibilityIdentifier("findTripsButton")
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(planner.isPlanning || planner.from == nil || planner.to == nil)
-                .accessibilityIdentifier("findTripsButton")
                 .padding(.horizontal)
                 .padding(.vertical, 8)
                 .background(.bar)
@@ -62,7 +72,9 @@ struct PlannerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Swap", systemImage: "arrow.up.arrow.down") { planner.swap() }
+                    Button("Clear", systemImage: "xmark.circle") { planner.clear() }
+                        .disabled(!planner.hasPlanContent)
+                        .accessibilityIdentifier("clearTripButton")
                 }
                 ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
             }

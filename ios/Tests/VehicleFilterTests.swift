@@ -62,6 +62,14 @@ final class VehicleFilterTests: XCTestCase {
         XCTAssertEqual(ids(f), ["red2"])
     }
 
+    func testAlertMatchesOnlySelectedRouteIds() {
+        let selectedAlert = TransitAlert(id: "selected", effect: "delay", header: "Delay", routeIds: ["CR-Worcester"])
+        let otherAlert = TransitAlert(id: "other", effect: "delay", header: "Delay", routeIds: ["CR-Fitchburg"])
+
+        XCTAssertTrue(selectedAlert.affectsAnyRoute(in: ["CR-Worcester"]))
+        XCTAssertFalse(otherAlert.affectsAnyRoute(in: ["CR-Worcester"]))
+    }
+
     func testApproachingListHidesTrainsThatHavePassed() {
         let f = VehicleFilter(enabledLines: [.red, .orange], approaching: [.red: ["red2"]], routes: routes)
         XCTAssertEqual(ids(f), ["red2", "org"])

@@ -80,6 +80,16 @@ struct TransitAlert: Identifiable, Sendable {
     let routeIds: [String]
     /// MBTA direction ids the alert applies to; empty means both directions.
     var directionIds: Set<Int> = []
+
+    func affectsAnyRoute(in routeIDs: Set<String>) -> Bool {
+        routeIds.contains(where: routeIDs.contains)
+    }
+}
+
+struct FavoriteLineLabel: Identifiable, Sendable {
+    let id: String
+    let title: String
+    let line: LineGroup
 }
 
 struct RouteInfo: Identifiable, Codable, Sendable {

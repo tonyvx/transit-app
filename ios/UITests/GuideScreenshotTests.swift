@@ -35,6 +35,11 @@ final class GuideScreenshotTests: XCTestCase {
         XCTAssertTrue(searchLocationButton.isHittable)
         XCTAssertTrue(findTripsButton.isHittable)
         attach(app, named: "Tony Phone - Trip planner")
+        let clearButton = app.buttons["clearTripButton"]
+        XCTAssertTrue(clearButton.isEnabled)
+        clearButton.tap()
+        XCTAssertEqual(fromField.value as? String, "Address or place")
+        XCTAssertEqual(findTripsButton.isEnabled, false)
 
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
@@ -70,7 +75,7 @@ final class GuideScreenshotTests: XCTestCase {
         }
         XCTAssertTrue(app.buttons["editFavoriteLinesLink"].waitForExistence(timeout: 5))
         attach(app, named: "Tony Phone - Favorite lines settings")
-        app.buttons["Save"].tap()
+        app.buttons["Done"].tap()
 
         let alerts = app.buttons["alertsButton"]
         XCTAssertTrue(alerts.waitForExistence(timeout: 5))
@@ -108,7 +113,7 @@ final class GuideScreenshotTests: XCTestCase {
         }
         attach(app, named: "howto-prefs")
         app.navigationBars.buttons.firstMatch.tap()
-        app.buttons["Save"].tap()
+        app.buttons["Done"].tap()
         sleep(8)
         attach(app, named: "howto-map")
 
