@@ -1,18 +1,18 @@
 import Foundation
 
-struct MapCoordinate: Sendable {
+struct MapCoordinate: Codable, Sendable {
     let latitude: Double
     let longitude: Double
 }
 
-struct RouteTrace: Identifiable, Sendable {
+struct RouteTrace: Identifiable, Codable, Sendable {
     let id: String
     let routeId: String
     let line: LineGroup
     let coordinates: [MapCoordinate]
 }
 
-struct RouteDirection: Identifiable, Sendable {
+struct RouteDirection: Identifiable, Codable, Sendable {
     let routeId: String
     let direction: Direction
     let startStop: String
@@ -82,7 +82,7 @@ struct TransitAlert: Identifiable, Sendable {
     var directionIds: Set<Int> = []
 }
 
-struct RouteInfo: Identifiable, Sendable {
+struct RouteInfo: Identifiable, Codable, Sendable {
     let id: String
     let name: String
     let color: String?
@@ -144,7 +144,7 @@ enum Confidence {
     }
 }
 
-enum LineGroup: String, CaseIterable, Identifiable, Sendable {
+enum LineGroup: String, CaseIterable, Identifiable, Codable, Sendable {
     case commuter = "Commuter", red = "Red", green = "Green", blue = "Blue", orange = "Orange", silver = "Silver"
     var id: String { rawValue }
 
@@ -162,7 +162,7 @@ enum LineGroup: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// MBTA direction_id 0 is outbound and 1 is inbound for commuter rail and Silver Line; subway lines use the same ids for their opposite compass directions.
-enum Direction: Int, CaseIterable, Identifiable, Sendable {
+enum Direction: Int, CaseIterable, Identifiable, Codable, Sendable {
     case outbound = 0, inbound = 1
     var id: Int { rawValue }
     var label: String { self == .inbound ? "Inbound" : "Outbound" }

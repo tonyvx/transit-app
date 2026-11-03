@@ -1,6 +1,6 @@
 # Boston Transit roadmap
 
-Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts, preferences, a first-run guide, a trip planner with live predictions, favorites, reminders, a widget, opt-in trip Live Activity tracking, and a Help & feedback hub. 58 unit tests pass; the planner search and persistent Find trips action, as well as the Help & feedback flow, have been exercised on Tony Phone.
+Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts, favorite lines, a first-run guide, a trip planner with live predictions, favorites, reminders, a widget, opt-in trip Live Activity tracking, and a Help & feedback hub. 58 unit tests pass; the planner search and persistent Find trips action, as well as the Help & feedback flow, have been exercised on Tony Phone.
 
 ## Done
 
@@ -14,7 +14,7 @@ Status today: on-device only (no backend). Live vehicles for rail and the Silver
 - Trip boarding confirmation when the planned train ID, GPS matcher and rider/train proximity agree.
 - Lock Screen Live Activity with next stop and stops remaining, updated using fresh train positions and background GPS when opted in. Always access and background location are enabled only after explicit consent and only during a confirmed trip.
 - Unit tests for the router, matcher, filters, live predictions, arrive-by, favorites, trip confirmation and stop progression.
-- A Help & feedback screen outside Preferences provides the how-to guide, bug and feature request email links, MBTA developer information, and privacy details.
+- The settings drawer provides the how-to guide, bug and feature request email links, MBTA developer information, and privacy details.
 - Refreshed all six how-to screenshots from Tony Phone, including the planner search cue.
 
 ## Next steps (in value-for-effort order)

@@ -114,3 +114,40 @@ final class EncodedPolylineTests: XCTestCase {
         XCTAssertNil(EncodedPolyline.decode("~"))
     }
 }
+
+
+final class RouteCacheTests: XCTestCase {
+    private func snapshot(savedAt: Date) -> RouteSnapshot {
+        RouteSnapshot(
+            savedAt: savedAt,
+            routes: [RouteInfo(id: "Orange", name: "Orange Line", color: "#ED8B00")],
+            traces: [RouteTrace(id: "Orange:1", routeId: "Orange", line: .orange,
+                                coordinates: [MapCoordinate(latitude: 42.3, longitude: -71.1)])],
+            directions: [RouteDirection(routeId: "Orange", direction: .outbound, startStop: "Oak Grove", endStop: "Forest Hills")]
+        )
+    }
+
+    private func tempURL() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("route-\(UUID().uuidString).json")
+    }
+
+    func testRoundTripWithinMaxAge() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        RouteCache.save(snapshot(savedAt: Date()), to: url)
+        let loaded = RouteCache.load(from: url)
+        XCTAssertEqual(loaded?.traces.first?.routeId, "Orange")
+        XCTAssertEqual(loaded?.directions.first?.endStop, "Forest Hills")
+    }
+
+    func testExpiredSnapshotIsIgnored() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        RouteCache.save(snapshot(savedAt: Date().addingTimeInterval(-8 * 24 * 3600)), to: url)
+        XCTAssertNil(RouteCache.load(from: url))
+    }
+
+    func testMissingFileIsIgnored() {
+        XCTAssertNil(RouteCache.load(from: tempURL()))
+    }
+}

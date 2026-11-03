@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showAlerts = false
     @State private var showPreferences = false
     @State private var selectedRouteId: String?
@@ -98,6 +99,7 @@ struct ContentView: View {
 
             VStack(spacing: 8) {
                 HStack {
+                    emptyStateHint
                     Spacer(minLength: 0)
                     Button { showPreferences = true } label: {
                         Image(systemName: "gearshape.fill")
@@ -139,6 +141,7 @@ struct ContentView: View {
         .onChange(of: model.planner.selectedId) { _, _ in fitItinerary() }
         .onChange(of: model.planner.results.count) { _, _ in fitItinerary() }
         .task { await model.refreshLoop() }
+        .onChange(of: scenePhase) { _, phase in model.isActive = phase == .active }
         .sheet(isPresented: $showAlerts) { AlertsView() }
         .sheet(item: $model.selectedStation) { st in
             StationSheet(station: st) { vehicleId in
@@ -228,15 +231,57 @@ struct ContentView: View {
 
     private var statusBar: some View {
         Group {
-            if let e = model.error {
-                Text(e).foregroundStyle(.white).padding(6).background(.red, in: Capsule())
+            if model.isOffline {
+                HStack(spacing: 6) {
+                    Image(systemName: "wifi.slash")
+                    if let t = model.fetchedAt {
+                        Text("No connection · showing trains from \(t, style: .time)")
+                    } else {
+                        Text("No connection · can't load trains")
+                    }
+                }
+                .font(.caption.weight(.medium))
+                .padding(8)
+                .background(.orange.opacity(0.9), in: Capsule())
+                .foregroundStyle(.white)
+                .accessibilityIdentifier("offlineBanner")
             } else if let e = model.routeMapError {
-                Text(e).foregroundStyle(.white).padding(6).background(.red, in: Capsule())
+                HStack(spacing: 8) {
+                    Text(e).font(.caption.weight(.medium))
+                    Button("Retry") { Task { await model.loadRouteTraces() } }
+                        .font(.caption.bold())
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                }
+                .padding(8)
+                .background(.red.opacity(0.9), in: Capsule())
+                .foregroundStyle(.white)
             } else if let t = model.fetchedAt {
                 Text("Updated \(t, style: .time)").font(.caption).padding(6).background(.regularMaterial, in: Capsule())
             }
         }
         .padding(.top, 4)
+    }
+
+    /// Guides a new rider, or explains an empty map.
+    @ViewBuilder
+    private var emptyStateHint: some View {
+        if model.preferences.lines.isEmpty {
+            hint("Tap a route on the map to follow it", icon: "hand.tap")
+        } else if model.fetchedAt != nil, !model.isOffline, model.visibleVehicles.isEmpty {
+            hint(model.preferences.onlyApproaching
+                 ? "No trains approaching you on your lines"
+                 : "No trains running on your lines right now",
+                 icon: "moon.zzz")
+        }
+    }
+
+    private func hint(_ text: String, icon: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .accessibilityIdentifier("emptyStateHint")
     }
 
     private var plannerSummaryBar: some View {
@@ -480,65 +525,6 @@ extension LineGroup {
         case .orange: Color(red: 0.93, green: 0.55, blue: 0)
         case .silver: Color(red: 0.49, green: 0.53, blue: 0.56)
         }
-    }
-}
-
-struct LegendView: View {
-    @Environment(AppModel.self) private var model
-    let onPreferences: () -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(model.chipLines) { line in
-                        let on = model.enabledLines.contains(line)
-                        Button { model.toggle(line) } label: {
-                            Text(line.rawValue)
-                                .font(.footnote.bold())
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(on ? line.color : Color.clear, in: Capsule())
-                                .overlay(Capsule().strokeBorder(line.color, lineWidth: 2))
-                                .foregroundStyle(on ? .white : line.color)
-                        }
-                        .accessibilityAddTraits(on ? .isSelected : [])
-                    }
-                }
-            }
-            Button(action: onPreferences) { Image(systemName: "gearshape.fill") }
-                .buttonStyle(.bordered).controlSize(.small)
-                .accessibilityLabel("Preferences")
-                .accessibilityIdentifier("preferencesButton")
-            }
-            HStack(spacing: 8) {
-                ForEach(Direction.allCases) { d in
-                    let on = model.enabledDirections.contains(d)
-                    Button { model.toggle(d) } label: {
-                        Label(d.label, systemImage: d == .inbound ? "arrow.down.left" : "arrow.up.right")
-                            .font(.caption.bold())
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(on ? Color.accentColor : Color.clear, in: Capsule())
-                            .overlay(Capsule().strokeBorder(Color.accentColor, lineWidth: 1.5))
-                            .foregroundStyle(on ? .white : Color.accentColor)
-                    }
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                }
-                Spacer()
-                if model.chipLines.isEmpty {
-                    Text("Choose lines in preferences").font(.caption).foregroundStyle(.secondary)
-                } else if model.enabledLines.isEmpty {
-                    Text("Select a line").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(model.visibleVehicles.isEmpty && model.preferences.onlyApproaching
-                         ? "No trains approaching you"
-                         : "\(model.visibleVehicles.count) shown")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
     }
 }
 

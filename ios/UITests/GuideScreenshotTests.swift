@@ -43,8 +43,8 @@ final class GuideScreenshotTests: XCTestCase {
         let preferences = app.buttons["moreButton"]
         XCTAssertTrue(preferences.waitForExistence(timeout: 5))
         preferences.tap()
-        XCTAssertTrue(app.navigationBars["More"].waitForExistence(timeout: 5))
-        attach(app, named: "Tony Phone - More")
+        XCTAssertTrue(app.navigationBars["Boston Transit"].waitForExistence(timeout: 5))
+        attach(app, named: "Tony Phone - Settings")
         for _ in 0..<8 {
             if app.links["reportBugLink"].exists { break }
             app.swipeUp()
@@ -64,12 +64,12 @@ final class GuideScreenshotTests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(app.links["MBTA website"].waitForExistence(timeout: 5))
-        for _ in 0..<5 {
-            if app.staticTexts["Trip tracking"].exists { break }
+        for _ in 0..<8 {
+            if app.buttons["editFavoriteLinesLink"].exists { break }
             app.swipeDown()
         }
-        XCTAssertTrue(app.staticTexts["Trip tracking"].waitForExistence(timeout: 5))
-        attach(app, named: "Tony Phone - Trip tracking preferences")
+        XCTAssertTrue(app.buttons["editFavoriteLinesLink"].waitForExistence(timeout: 5))
+        attach(app, named: "Tony Phone - Favorite lines settings")
         app.buttons["Save"].tap()
 
         let alerts = app.buttons["alertsButton"]

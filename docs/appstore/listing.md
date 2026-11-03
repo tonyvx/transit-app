@@ -51,9 +51,9 @@ No sign-in is needed. Allow location access when asked. To demonstrate trip Live
 - Update these answers before shipping crowdsourcing.
 
 ## Screenshots to capture (6.9" iPhone, portrait)
-1. Live map with line chips on
+1. Live map with every route drawn
 2. Station sheet with arrivals and a highlighted train
 3. Trip planner with results
 4. Planned trip drawn on the map
 5. Alerts grouped by relevance
-6. Preferences
+6. Settings

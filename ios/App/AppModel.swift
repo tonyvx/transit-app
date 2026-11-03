@@ -19,23 +19,12 @@ final class AppModel {
     private(set) var fetchedAt: Date?
     private(set) var error: String?
     var selectedVehicleId: String?
-    var enabledLines: Set<LineGroup>
-    var enabledDirections: Set<Direction>
-    var enabledRoutes: Set<String>
     private(set) var preferences: Preferences
-
-    /// Applies the saved preferences as the current filter selection.
-    func applyPreferences() {
-        enabledLines = preferences.lines
-        enabledDirections = preferences.directions
-        enabledRoutes = preferences.routes
-    }
 
     /// Saves preferences and applies them to the map immediately.
     func savePreferences(_ p: Preferences) {
         preferences = p
         p.save()
-        applyPreferences()
         Task { await loadStations() }
     }
 
@@ -112,6 +101,13 @@ final class AppModel {
 
     func loadRouteTraces() async {
         guard routes.isEmpty || routeTraces.isEmpty || routeDirections.isEmpty else { return }
+        if routeTraces.isEmpty, let cached = RouteCache.load() {
+            routes = Dictionary(uniqueKeysWithValues: cached.routes.map { ($0.id, $0) })
+            routeTraces = cached.traces
+            routeDirections = cached.directions
+            routeMapError = nil
+            return
+        }
         do {
             if routes.isEmpty {
                 let loadedRoutes = try await provider.routes()
@@ -121,8 +117,15 @@ final class AppModel {
             async let directions = provider.routeDirections(routeIds: routes.keys.sorted())
             routeTraces = try await traces
             routeDirections = try await directions
-            if routeTraces.isEmpty { routeMapError = "Route maps are unavailable." }
-            else { routeMapError = nil }
+            if routeTraces.isEmpty {
+                routeMapError = "Route maps are unavailable."
+            } else {
+                routeMapError = nil
+                if !routeDirections.isEmpty {
+                    RouteCache.save(RouteSnapshot(savedAt: Date(), routes: Array(routes.values),
+                                                  traces: routeTraces, directions: routeDirections))
+                }
+            }
         } catch {
             if routeTraces.isEmpty { routeMapError = "Can't load route maps. Check your connection." }
             else { routeMapError = "Can't load route direction details. Check your connection." }
@@ -155,7 +158,7 @@ final class AppModel {
     /// rider's nearest stop on that line, i.e. the line begins ahead of them, and estimates the drive there.
     func updateNearbyStarts() async {
         guard let me = location.pings.last else { nearbyStarts = [:]; return }
-        let dirs = enabledDirections.isEmpty ? Direction.allCases : Array(enabledDirections)
+        let dirs = preferences.directions.isEmpty ? Direction.allCases : Array(preferences.directions)
         let candidates = Set(alerts.flatMap(\.routeIds).filter { id in
             guard let g = LineGroup(routeId: id) else { return false }
             return !preferences.lines.contains(g)
@@ -194,8 +197,6 @@ final class AppModel {
     }
 
     /// Lines offered as legend chips: only those chosen in preferences.
-    var chipLines: [LineGroup] { LineGroup.allCases.filter(preferences.lines.contains) }
-
     /// Per line, ids of trains that have not yet reached the rider's nearest station on that line.
     /// A missing entry means unknown (no location or stations yet), in which case the line is not filtered.
     private var approaching: [LineGroup: Set<String>] = [:]
@@ -203,7 +204,7 @@ final class AppModel {
     func updateApproaching() async {
         guard preferences.onlyApproaching, let me = location.pings.last else { approaching = [:]; return }
         var result: [LineGroup: Set<String>] = [:]
-        for line in enabledLines {
+        for line in preferences.lines {
             guard let nearest = (stationsByKey[stationKey(for: line)] ?? []).min(by: {
                 sqDist($0.lat, $0.lon, me.lat, me.lon) < sqDist($1.lat, $1.lon, me.lat, me.lon)
             }) else { continue }
@@ -221,7 +222,7 @@ final class AppModel {
     }
 
     var visibleVehicles: [Vehicle] {
-        VehicleFilter(enabledLines: enabledLines, enabledRoutes: enabledRoutes, enabledDirections: enabledDirections,
+        VehicleFilter(enabledLines: preferences.lines, enabledRoutes: preferences.routes, enabledDirections: preferences.directions,
                       approaching: approaching, routes: routes, branches: branches).apply(to: vehicles)
     }
 
@@ -232,22 +233,22 @@ final class AppModel {
 
     /// Stations to draw: for each enabled line, those on its selected routes (or on all its routes if none selected).
     var visibleStations: [Station] {
-        enabledLines.flatMap { stationsByKey[stationKey(for: $0)] ?? [] }
+        preferences.lines.flatMap { stationsByKey[stationKey(for: $0)] ?? [] }
     }
 
     private func routeIdsToShow(in line: LineGroup) -> [String] {
         let all = routes(in: line).map(\.id)
-        let chosen = all.filter(enabledRoutes.contains)
+        let chosen = all.filter(preferences.routes.contains)
         return chosen.isEmpty ? all : chosen
     }
 
     private func stationKey(for line: LineGroup) -> String { "\(line.rawValue):\(routeIdsToShow(in: line).joined(separator: ","))" }
 
     /// Changes whenever the set of stations to show changes, so the view can reload them.
-    var stationRequestKey: String { enabledLines.sorted { $0.rawValue < $1.rawValue }.map(stationKey(for:)).joined(separator: "|") }
+    var stationRequestKey: String { preferences.lines.sorted { $0.rawValue < $1.rawValue }.map(stationKey(for:)).joined(separator: "|") }
 
     func loadStations() async {
-        for line in enabledLines {
+        for line in preferences.lines {
             let key = stationKey(for: line)
             let ids = routeIdsToShow(in: line)
             guard stationsByKey[key] == nil, !ids.isEmpty else { continue }
@@ -279,14 +280,6 @@ final class AppModel {
 
     func branches(for routeId: String) -> [Branch] { branches.filter { $0.routeId == routeId } }
 
-    func toggle(_ line: LineGroup) {
-        if enabledLines.contains(line) { enabledLines.remove(line) } else { enabledLines.insert(line) }
-    }
-
-    func toggle(_ direction: Direction) {
-        if enabledDirections.contains(direction) { enabledDirections.remove(direction) } else { enabledDirections.insert(direction) }
-    }
-
     let provider: TransitProvider
     let location: LocationTracker
     let planner: PlannerModel
@@ -308,9 +301,6 @@ final class AppModel {
         planner = PlannerModel(provider: provider, location: location)
         let p = Preferences.load()
         preferences = p
-        enabledLines = p.lines
-        enabledDirections = p.directions
-        enabledRoutes = p.routes
         location.onPingsUpdated = { [weak self] pings in
             guard let self else { return }
             Task {
@@ -335,12 +325,26 @@ final class AppModel {
 
     var selected: Vehicle? { mapVehicles.first { $0.id == selectedVehicleId } }
 
+    /// False while the app is in the background, so polling stops and costs no battery or data.
+    var isActive = true
+    /// True when the last vehicle refresh failed, so the map is showing stale positions.
+    var isOffline: Bool { error != nil }
+
+    /// Seconds between vehicle refreshes: fast while trains are shown, slow when nothing on the map needs them.
+    var refreshInterval: Duration {
+        preferences.lines.isEmpty && planner.selected == nil ? .seconds(20) : .seconds(5)
+    }
+
     func refreshLoop() async {
         if routes.isEmpty, let r = try? await provider.routes() { routes = Dictionary(uniqueKeysWithValues: r.map { ($0.id, $0) }) }
         if branches.isEmpty, let b = try? await provider.branches() { branches = b }
         if routeTraces.isEmpty || routeDirections.isEmpty { await loadRouteTraces() }
         var tick = 0
         while !Task.isCancelled {
+            guard isActive else {
+                try? await Task.sleep(for: .seconds(1))
+                continue
+            }
             do {
                 vehicles = try await provider.vehicles()
                 fetchedAt = Date()
@@ -351,10 +355,10 @@ final class AppModel {
                 if tick % 6 == 0 { alerts = try await provider.alerts(); await updateNearbyStarts() }
                 error = nil
             } catch {
-                self.error = "Can't reach MBTA"
+                self.error = "No connection"
             }
             tick += 1
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: refreshInterval)
         }
     }
 }
