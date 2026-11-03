@@ -38,10 +38,10 @@ final class GuideScreenshotTests: XCTestCase {
         let clearButton = app.buttons["clearTripButton"]
         XCTAssertTrue(clearButton.isEnabled)
         clearButton.tap()
-        XCTAssertEqual(fromField.value as? String, "Address or place")
+        XCTAssertEqual(fromField.value as? String, "")
         XCTAssertEqual(findTripsButton.isEnabled, false)
 
-        let done = app.buttons["Done"]
+        let done = app.navigationBars["Trip planner"].buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
 
@@ -63,7 +63,7 @@ final class GuideScreenshotTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(
             NSPredicate(format: "label CONTAINS %@", "independent app")
         ).firstMatch.exists)
-        app.buttons["Done"].tap()
+        app.navigationBars["Terms & Policy"].buttons["Done"].tap()
         for _ in 0..<8 {
             if app.links["MBTA website"].exists { break }
             app.swipeUp()

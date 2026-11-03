@@ -1,6 +1,6 @@
 # Boston Transit roadmap
 
-Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts, favorite lines, a first-run guide, a trip planner with live predictions, favorites, reminders, a widget, opt-in trip Live Activity tracking, and a Help & feedback hub. 58 unit tests pass; the planner search and persistent Find trips action, as well as the Help & feedback flow, have been exercised on Tony Phone.
+Status today: on-device only (no backend). Live vehicles for rail and the Silver Line, alerts filtered to favorite routes and branches, a first-run guide, a trip planner with live predictions, favorites, reminders, a widget, opt-in trip Live Activity tracking, and a Help & feedback hub. 64 unit tests pass. The planner search and persistent Find trips action, as well as the Help & feedback flow, have been exercised on Tony Phone.
 
 ## Done
 
@@ -9,6 +9,8 @@ Status today: on-device only (no backend). Live vehicles for rail and the Silver
 - Live predictions in the planner: live times and delay per leg, cancelled trains skipped, later connections follow the live arrival, "Live" badge, pull to refresh.
 - Planning for any day with published schedules, with Leave now, Depart at and Arrive by. This fixed a bug where every day except today found no trips.
 - Planner opens from a persistent trip-summary bar at the top of the map; typed locations have an explicit “Search this location” action, and “Find trips” stays visible while entering locations.
+- Planner has Clear at the top-left and Swap beside Find trips; Clear resets the form and removes the selected itinerary from the map, while swapping reverses the endpoints.
+- Direction and approaching-train preferences persist immediately when changed; favorite route and branch selections are shown individually and alerts match the selected route IDs.
 - Favorite stations, saved trips, a weekday reminder per saved trip, and a one-off "Remind me to leave".
 - "Next trains" widget (small, medium, lock screen) that reads favorites through an App Group.
 - Trip boarding confirmation when the planned train ID, GPS matcher and rider/train proximity agree.

@@ -4,13 +4,13 @@ Native SwiftUI iOS app (iOS 17+) with no backend. It calls the MBTA V3 API direc
 
 ## Features
 - Live map of Commuter Rail, Red, Orange, Blue, Green and Silver Line vehicles, with every route drawn on the map. Tap a route for its details and to favorite it.
-- A settings drawer (gear icon) with favorite lines (including branches such as Red to Ashmont or Braintree), directions, only trains that haven't passed you, trip tracking, favorite stations, feedback, terms and MBTA information.
-- Alerts grouped by direction for favorite lines and colored by line; other lines are collapsed.
+- A settings drawer (gear icon) with specific favorite routes and branches, directions, only trains that haven't passed you, trip tracking, favorite stations, feedback, terms and MBTA information. Direction and approaching-train settings save as soon as they change.
+- Alerts grouped by direction for selected favorite routes and branches and colored by line; other lines are collapsed.
 - Works offline-tolerantly: route shapes are cached on the phone for a week, polling stops in the background, and the map shows a banner when the connection drops.
 - Station arrivals per train, and a halo on a train you pick.
 - MBTA alerts grouped by relevance, with drive time to lines that start ahead of you.
 - On-device "you're probably on train X" matching.
-- Trip planner with transfers and walk, bike, scooter or car access legs. Typed locations have an explicit search action, and Find trips stays visible while entering locations (see below).
+- Trip planner with transfers and walk, bike, scooter or car access legs. Typed locations have an explicit search action, Find trips stays visible while entering locations, and Clear removes the form entries and planned trip from the map.
 - Optional trip confirmation when your GPS and the live MBTA train match a selected itinerary. A Lock Screen Live Activity tracks the next stop and stops to disembarkment; background GPS requires opt-in Always access and stays on the phone.
 - Feedback, how-to guide, a Terms & Policy popup and MBTA information in the settings drawer.
 
@@ -65,7 +65,7 @@ Before deciding, compare similar transit apps and their current prices in the ta
 
 ## Trip planner
 
-Tap the trip summary at the top of the map. Set a start and destination by searching, using your location, or dropping a pin on the map. Choose how you get to the first station and from the last one (walk, bike, scooter or car). Pick Leave now, Depart at or Arrive by (any day the MBTA has published schedules for). The planner finds up to three trips, including transfers, using live MBTA predictions where they exist (marked Live, with the delay) and scheduled times otherwise, and draws the selected one on the map. When your GPS matches the selected train, the app asks if you are aboard. Confirm to start a Live Activity showing the next stop and count to disembarkment.
+Tap the trip summary at the top of the map. Set a start and destination by searching, using your location, or dropping a pin on the map. Choose how you get to the first station and from the last one (walk, bike, scooter or car). Use Swap beside Find trips to reverse the endpoints, or Clear at the top-left of the planner to reset the form and remove the planned route and markers from the map. Pick Leave now, Depart at or Arrive by (any day the MBTA has published schedules for). The planner finds up to three trips, including transfers, using live MBTA predictions where they exist (marked Live, with the delay) and scheduled times otherwise, and draws the selected one on the map. When your GPS matches the selected train, the app asks if you are aboard. Confirm to start a Live Activity showing the next stop and count to disembarkment.
 
 Background trip updates are optional. Enable **Allow background trip updates** in the settings drawer (gear icon) to request Always location access. GPS runs in the background only for a trip you confirm. If the app is backgrounded when a likely boarding match is found, an authorized local notification opens the app to confirm; otherwise the confirmation appears when the app is open. If Always access is not granted, the Live Activity updates while the app is open and displays the last update when backgrounded.
 
