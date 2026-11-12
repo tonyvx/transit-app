@@ -4,18 +4,53 @@ import SwiftUI
 struct PlannerView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: PlanField?
+    @State private var savedTripsExpanded = false
 
     var body: some View {
         @Bindable var planner = model.planner
         NavigationStack {
             Form {
-                if !model.favorites.trips.isEmpty {
-                    Section("Saved trips") {
-                        ForEach(model.favorites.trips) { trip in SavedTripRow(trip: trip) }
+                Section {
+                    DisclosureGroup(isExpanded: $savedTripsExpanded) {
+                        if model.favorites.trips.isEmpty {
+                            Text("No saved trips yet").foregroundStyle(.secondary)
+                        } else {
+                            ForEach(model.favorites.trips) { trip in SavedTripRow(trip: trip) }
+                        }
+                    } label: {
+                        Text("Saved trips (\(model.favorites.trips.count))")
+                    }
+                    .accessibilityIdentifier("savedTripsDisclosure")
+                }
+                Section {
+                    HStack(spacing: 0) {
+                        ForEach([AccessMode.walk, .car, .scooter, .bike]) { mode in
+                            Button {
+                                focusedField = nil
+                                planner.setModeForBoth(mode)
+                            } label: {
+                                VStack(spacing: 4) {
+                                    Image(systemName: mode.icon)
+                                    Text(mode.label).font(.caption)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .background(planner.fromMode == mode && planner.toMode == mode ? Color.accentColor.opacity(0.16) : .clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Use \(mode.label) for both station legs")
+                            .accessibilityIdentifier("stationMode-\(mode.rawValue)")
+                            .accessibilityAddTraits(planner.fromMode == mode && planner.toMode == mode ? .isSelected : [])
+                        }
                     }
                 }
-                endpoint("From", field: .from, text: $planner.fromText, mode: $planner.fromMode, point: planner.from, planner: planner)
-                endpoint("To", field: .to, text: $planner.toText, mode: $planner.toMode, point: planner.to, planner: planner)
+                Section {
+                    endpoint(field: .from, text: planner.fromText, mode: $planner.fromMode, point: planner.from, planner: planner)
+                    endpoint(field: .to, text: planner.toText, mode: $planner.toMode, point: planner.to, planner: planner)
+                    lookupFeedback(field: .from, text: planner.fromText, point: planner.from, planner: planner)
+                    lookupFeedback(field: .to, text: planner.toText, point: planner.to, planner: planner)
+                }
                 Section {
                     Picker("When", selection: $planner.timeMode) {
                         ForEach(PlannerModel.TimeMode.allCases) { Text($0.rawValue).tag($0) }
@@ -38,9 +73,21 @@ struct PlannerView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.immediately)
+            .background {
+                Color.clear.contentShape(Rectangle()).onTapGesture { focusedField = nil }
+            }
+            .onChange(of: savedTripsExpanded) { _, _ in focusedField = nil }
+            .onChange(of: planner.timeMode) { _, _ in focusedField = nil }
+            .onChange(of: focusedField) { oldField, newField in
+                if let oldField, oldField != newField {
+                    Task { await planner.search(oldField) }
+                }
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HStack(spacing: 12) {
                     Button {
+                        focusedField = nil
                         planner.swap()
                     } label: {
                         Label("Swap", systemImage: "arrow.up.arrow.down")
@@ -48,19 +95,23 @@ struct PlannerView: View {
                     .buttonStyle(.bordered)
                     .accessibilityIdentifier("swapTripButton")
 
+                    Spacer()
+
                     Button {
-                        Task { await planner.plan() }
+                        focusedField = nil
+                        Task { await planner.resolveAndPlan() }
                     } label: {
-                        HStack {
-                            Spacer()
-                            Text("Find trips")
-                            if planner.isPlanning { ProgressView().padding(.leading, 4) }
-                            Spacer()
+                        HStack(spacing: 4) {
+                            Text("GO").bold()
+                            if planner.isPlanning || planner.isResolving { ProgressView().padding(.leading, 4) }
                         }
-                        .frame(minHeight: 44)
+                        .frame(minWidth: 54, minHeight: 44)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(planner.isPlanning || planner.from == nil || planner.to == nil)
+                    .tint(.green)
+                    .disabled(planner.isPlanning || planner.isResolving ||
+                              planner.fromText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              planner.toText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("findTripsButton")
                 }
                 .padding(.horizontal)
@@ -81,33 +132,79 @@ struct PlannerView: View {
         }
     }
 
-    private func endpoint(_ title: String, field: PlanField, text: Binding<String>, mode: Binding<AccessMode>, point: PlanPoint?, planner: PlannerModel) -> some View {
-        Section(title) {
-            HStack {
-                TextField("Address or place", text: text)
+    private func endpoint(field: PlanField, text: String, mode: Binding<AccessMode>, point: PlanPoint?, planner: PlannerModel) -> some View {
+        Group {
+            HStack(spacing: 2) {
+                Image(systemName: field == .from ? "location.fill" : "mappin")
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(field == .from ? Color.blue : Color.red, in: Circle())
+                    .padding(.trailing, 6)
+                    .accessibilityHidden(true)
+                TextField("Address or place", text: Binding(get: { text }, set: { planner.updateText($0, field: field) }))
+                    .focused($focusedField, equals: field)
+                    .accessibilityLabel(field == .from ? "Start address or place" : "Destination address or place")
+                    .accessibilityIdentifier(field == .from ? "fromAddressField" : "toAddressField")
                     .submitLabel(.search)
-                    .onSubmit { Task { await planner.search(field) } }
-                Button { planner.useMyLocation(field) } label: { Image(systemName: "location.fill") }
-                    .buttonStyle(.borderless).accessibilityLabel("Use my location")
+                    .onSubmit { focusedField = nil; Task { await planner.search(field) } }
                 Button {
+                    focusedField = nil
+                    planner.useMyLocation(field)
+                } label: {
+                    Image(systemName: "location.fill").frame(width: 40, height: 44)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(field == .from ? "Use my location for start" : "Use my location for destination")
+                .accessibilityIdentifier(field == .from ? "fromCurrentLocationButton" : "toCurrentLocationButton")
+                Button {
+                    focusedField = nil
                     planner.pickTarget = field
                     planner.showSheet = false
-                } label: { Image(systemName: "mappin.and.ellipse") }
-                    .buttonStyle(.borderless).accessibilityLabel("Drop a pin on the map")
-            }
-            if !text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               point?.name != text.wrappedValue {
-                Button {
-                    Task { await planner.search(field) }
                 } label: {
-                    Label("Search this location", systemImage: "magnifyingglass")
+                    Image(systemName: "mappin.and.ellipse").frame(width: 40, height: 44)
                 }
-                .accessibilityIdentifier(field == .from ? "searchFromLocationButton" : "searchToLocationButton")
+                .buttonStyle(.borderless)
+                .accessibilityLabel(field == .from ? "Drop a pin for start" : "Drop a pin for destination")
+                .accessibilityIdentifier(field == .from ? "fromPinButton" : "toPinButton")
+                Menu {
+                    ForEach([AccessMode.walk, .car, .scooter, .bike]) { option in
+                        Button {
+                            focusedField = nil
+                            mode.wrappedValue = option
+                        } label: {
+                            if mode.wrappedValue == option {
+                                Label(option.label, systemImage: "checkmark")
+                            } else {
+                                Label(option.label, systemImage: option.icon)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: mode.wrappedValue.icon)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(field == .from ? "Get to the station by" : "Get from the station by")
+                .accessibilityValue(mode.wrappedValue.label)
+                .accessibilityIdentifier(field == .from ? "fromModeMenu" : "toModeMenu")
             }
-            if let point, point.name != text.wrappedValue { Label(point.name, systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green) }
-            Picker(field == .from ? "Get to the station by" : "Get from the station by", selection: mode) {
-                ForEach(AccessMode.allCases) { Label($0.label, systemImage: $0.icon).tag($0) }
+        }
+    }
+
+    @ViewBuilder
+    private func lookupFeedback(field: PlanField, text: String, point: PlanPoint?, planner: PlannerModel) -> some View {
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           point?.name != text {
+            Button {
+                focusedField = nil
+                Task { await planner.search(field) }
+            } label: {
+                Label(field == .from ? "Search start location" : "Search destination", systemImage: "magnifyingglass")
             }
+            .accessibilityIdentifier(field == .from ? "searchFromLocationButton" : "searchToLocationButton")
+        }
+        if let error = planner.locationErrors[field] {
+            Text(error).font(.caption).foregroundStyle(.red)
         }
     }
 }
@@ -120,7 +217,7 @@ struct ItineraryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("\(Int(itinerary.duration / 60)) min").font(.headline)
+                Text("\(Int(itinerary.duration / 60)) min · \(distance(itinerary.distanceMeters))").font(.headline)
                 if itinerary.isLive { Label("Live", systemImage: "dot.radiowaves.left.and.right").font(.caption2).foregroundStyle(.green) }
                 Spacer()
                 Text("Leave \(itinerary.leaveBy, style: .time) · arrive \(itinerary.arriveAt, style: .time)").font(.caption)
@@ -134,7 +231,8 @@ struct ItineraryCard: View {
                         Image(systemName: icon(leg)).foregroundStyle(model.routeColor(leg.routeId)).frame(width: 20)
                         VStack(alignment: .leading) {
                             Text(title(leg)).font(.subheadline)
-                            Text("\(leg.start, style: .time) – \(leg.end, style: .time)").font(.caption).foregroundStyle(.secondary)
+                            Text("\(leg.start, style: .time) – \(leg.end, style: .time) · \(Int(leg.duration / 60)) min · \(distance(leg.distanceMeters))")
+                                .font(.caption).foregroundStyle(.secondary)
                             if let note = status(leg) { Text(note.text).font(.caption2).foregroundStyle(note.color) }
                         }
                     }
@@ -143,6 +241,11 @@ struct ItineraryCard: View {
         }
         .padding(.vertical, 2)
         .listRowBackground(selected ? Color.accentColor.opacity(0.12) : nil)
+    }
+
+    private func distance(_ meters: Double?) -> String {
+        guard let meters else { return "distance unavailable" }
+        return String(format: "%.1f mi est.", meters / 1_609.344)
     }
 
     private func status(_ leg: ItineraryLeg) -> (text: String, color: Color)? {

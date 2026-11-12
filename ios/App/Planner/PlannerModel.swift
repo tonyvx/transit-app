@@ -9,33 +9,48 @@ enum PlanField { case from, to }
 final class PlannerModel {
     var from: PlanPoint?
     var to: PlanPoint?
-    var fromMode: AccessMode = .walk
-    var toMode: AccessMode = .walk
+    var fromMode: AccessMode = .walk { didSet { if fromMode != oldValue { invalidatePlan(); scheduleAutomaticPlan() } } }
+    var toMode: AccessMode = .walk { didSet { if toMode != oldValue { invalidatePlan(); scheduleAutomaticPlan() } } }
     enum TimeMode: String, CaseIterable, Identifiable {
         case now = "Leave now", depart = "Depart at", arrive = "Arrive by"
         var id: String { rawValue }
     }
-    var timeMode: TimeMode = .now
-    var departAt = Date()
+    var timeMode: TimeMode = .now { didSet { if timeMode != oldValue { invalidatePlan() } } }
+    var departAt = Date() { didSet { if departAt != oldValue { invalidatePlan() } } }
     var fromText = ""
     var toText = ""
     var results: [Itinerary] = []
     var selectedId: UUID?
     var isPlanning = false
+    var isResolving = false
     var error: String?
+    private(set) var locationErrors: [PlanField: String] = [:]
     /// Set while the rider is tapping the map to drop a pin.
     var pickTarget: PlanField?
     var showSheet = false
 
     private let provider: TransitProvider
     private let location: LocationTracker
+    private let searchLocation: @MainActor (String) async throws -> PlanPoint?
+    private let accessLeg: @Sendable (AccessMode, CLLocationCoordinate2D, CLLocationCoordinate2D) async -> (seconds: TimeInterval, meters: Double)
     private var network: TransitNetwork?
     private var activePlanRequest: UUID?
+    private var activeResolveRequest: UUID?
     private var formRevision = 0
+    private struct SearchRequest {
+        let id: UUID
+        let text: String
+        let task: Task<PlanPoint?, Error>
+    }
+    private var searches: [PlanField: SearchRequest] = [:]
 
-    init(provider: TransitProvider, location: LocationTracker) {
+    init(provider: TransitProvider, location: LocationTracker,
+         searchLocation: @escaping @MainActor (String) async throws -> PlanPoint? = PlannerModel.searchLocation,
+         accessLeg: @escaping @Sendable (AccessMode, CLLocationCoordinate2D, CLLocationCoordinate2D) async -> (seconds: TimeInterval, meters: Double) = PlannerModel.routedAccessLeg) {
         self.provider = provider
         self.location = location
+        self.searchLocation = searchLocation
+        self.accessLeg = accessLeg
     }
 
     var selected: Itinerary? { results.first { $0.id == selectedId } ?? results.first }
@@ -43,7 +58,7 @@ final class PlannerModel {
     var hasPlanContent: Bool {
         from != nil || to != nil
             || !fromText.isEmpty || !toText.isEmpty
-            || !results.isEmpty || error != nil || pickTarget != nil || isPlanning
+            || !results.isEmpty || error != nil || pickTarget != nil || isPlanning || isResolving
     }
 
     func useMyLocation(_ field: PlanField) {
@@ -52,9 +67,61 @@ final class PlannerModel {
     }
 
     func set(_ point: PlanPoint, _ field: PlanField) {
+        invalidateResolve()
+        apply(point, to: field)
+    }
+
+    private func apply(_ point: PlanPoint, to field: PlanField) {
+        searches[field] = nil
+        locationErrors[field] = nil
+        invalidatePlan()
         switch field {
         case .from: from = point; fromText = point.name
         case .to: to = point; toText = point.name
+        }
+        scheduleAutomaticPlan()
+    }
+
+    func updateText(_ text: String, field: PlanField) {
+        let current = field == .from ? fromText : toText
+        guard text != current else { return }
+        invalidateResolve()
+        searches[field] = nil
+        locationErrors[field] = nil
+        invalidatePlan()
+        error = nil
+        switch field {
+        case .from: fromText = text; from = nil
+        case .to: toText = text; to = nil
+        }
+    }
+
+    func setModeForBoth(_ mode: AccessMode) {
+        fromMode = mode
+        toMode = mode
+    }
+
+    private func invalidatePlan() {
+        activePlanRequest = nil
+        isPlanning = false
+        results = []
+        selectedId = nil
+    }
+
+    private func invalidateResolve() {
+        formRevision += 1
+        activeResolveRequest = nil
+        isResolving = false
+    }
+
+    private func scheduleAutomaticPlan() {
+        guard let from, let to else { return }
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, self.from == from, self.to == to,
+                  self.fromText == from.name, self.toText == to.name,
+                  !self.isPlanning, !self.isResolving, self.results.isEmpty else { return }
+            await self.plan()
         }
     }
 
@@ -83,13 +150,22 @@ final class PlannerModel {
     }
 
     func swap() {
+        invalidateResolve()
+        searches.removeAll()
+        let fromError = locationErrors[.from]
+        locationErrors[.from] = locationErrors[.to]
+        locationErrors[.to] = fromError
+        invalidatePlan()
         (from, to) = (to, from)
         (fromText, toText) = (toText, fromText)
         (fromMode, toMode) = (toMode, fromMode)
+        scheduleAutomaticPlan()
     }
 
     func clear() {
-        formRevision += 1
+        invalidateResolve()
+        searches.removeAll()
+        locationErrors.removeAll()
         activePlanRequest = nil
         isPlanning = false
         from = nil
@@ -106,28 +182,65 @@ final class PlannerModel {
         pickTarget = nil
     }
 
-    func search(_ field: PlanField) async {
-        let text = field == .from ? fromText : toText
-        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let revision = formRevision
+    private static func searchLocation(_ text: String) async throws -> PlanPoint? {
         let req = MKLocalSearch.Request()
         req.naturalLanguageQuery = text
         req.region = MKCoordinateRegion(center: .init(latitude: 42.36, longitude: -71.06),
                                         span: .init(latitudeDelta: 1.2, longitudeDelta: 1.2))
+        guard let item = try await MKLocalSearch(request: req).start().mapItems.first else { return nil }
+        let c = item.placemark.coordinate
+        return PlanPoint(name: item.name ?? text, lat: c.latitude, lon: c.longitude)
+    }
+
+    func search(_ field: PlanField) async {
+        let text = field == .from ? fromText : toText
+        let point = field == .from ? from : to
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, point?.name != text else { return }
+        let request: SearchRequest
+        if let existing = searches[field], existing.text == text {
+            request = existing
+        } else {
+            request = SearchRequest(id: UUID(), text: text, task: Task { try await searchLocation(text) })
+            searches[field] = request
+        }
         do {
-            let item = try await MKLocalSearch(request: req).start().mapItems.first
-            guard formRevision == revision else { return }
-            guard let item else { error = "No match for \(text)."; return }
-            let c = item.placemark.coordinate
-            error = nil
-            set(PlanPoint(name: item.name ?? text, lat: c.latitude, lon: c.longitude), field)
+            let point = try await request.task.value
+            guard searches[field]?.id == request.id, (field == .from ? fromText : toText) == text else { return }
+            searches[field] = nil
+            guard let point else { locationErrors[field] = "No match for \(text)."; return }
+            apply(point, to: field)
         } catch {
-            if formRevision == revision { self.error = "Search failed." }
+            if searches[field]?.id == request.id {
+                searches[field] = nil
+                locationErrors[field] = "Search failed. Check your connection."
+            }
         }
     }
 
+    func resolveAndPlan() async {
+        guard !isResolving, !isPlanning else { return }
+        isResolving = true
+        let requestID = UUID()
+        activeResolveRequest = requestID
+        let revision = formRevision
+        defer {
+            if activeResolveRequest == requestID {
+                activeResolveRequest = nil
+                isResolving = false
+            }
+        }
+        await search(.from)
+        guard revision == formRevision, from != nil else { return }
+        await search(.to)
+        guard revision == formRevision, to != nil else { return }
+        await plan()
+    }
+
     func plan() async {
-        guard let a = from, let b = to else { error = "Choose a start and destination."; return }
+        guard let a = from, let b = to, fromText == a.name, toText == b.name else {
+            error = "Choose a start and destination."
+            return
+        }
         let requestID = UUID()
         activePlanRequest = requestID
         isPlanning = true
@@ -147,7 +260,7 @@ final class PlannerModel {
                 network = loadedNetwork
             }
             guard let network else { return }
-            let planner = TripPlanner(provider: provider, network: network, accessLeg: PlannerModel.routedAccessLeg)
+            let planner = TripPlanner(provider: provider, network: network, accessLeg: accessLeg)
             let plannedResults: [Itinerary]
             switch timeMode {
             case .now: plannedResults = try await planner.plan(from: a, to: b, fromMode: fromMode, toMode: toMode, departAt: Date())

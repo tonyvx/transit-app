@@ -8,6 +8,9 @@ struct ContentView: View {
     @State private var showPreferences = false
     @State private var selectedRouteId: String?
     @State private var showHowTo = false
+    @State private var hideOtherTripLines = false
+    @State private var tripRoutePaths: [UUID: [CLLocationCoordinate2D]] = [:]
+    @State private var plannerSheetDetent: PresentationDetent = .large
     @AppStorage("hasSeenHowTo") private var hasSeenHowTo = false
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(center: .init(latitude: 42.3601, longitude: -71.0589),
@@ -16,7 +19,7 @@ struct ContentView: View {
     private func routeID(near c: CLLocationCoordinate2D, tolerance: Double) -> String? {
         let k = cos(c.latitude * .pi / 180)
         var best: (id: String, d: Double)?
-        for trace in model.routeTraces {
+        for trace in model.routeTraces where tripMapVisibility.showsRoute(trace.routeId) {
             let pts = trace.coordinates
             guard pts.count > 1 else { continue }
             for i in 1..<pts.count {
@@ -40,17 +43,17 @@ struct ContentView: View {
             MapReader { proxy in
             Map(position: $camera, selection: $model.selectedVehicleId) {
                 UserAnnotation()
-                ForEach(model.routeTraces) { trace in
+                ForEach(model.routeTraces.filter { tripMapVisibility.showsRoute($0.routeId) }) { trace in
                     MapPolyline(coordinates: trace.coordinates.map {
                         CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
                     })
                     .stroke(trace.line.color.opacity(routeOpacity(trace)),
-                            style: StrokeStyle(lineWidth: isPlannedRoute(trace.routeId) ? 5 : 3, lineCap: .round))
+                            style: StrokeStyle(lineWidth: isPlannedRoute(trace.routeId) && !tripMapVisibility.fadesRouteTraces ? 5 : 3, lineCap: .round))
                     .tag("route:\(trace.routeId)")
                 }
                 if let it = model.planner.selected {
                     ForEach(it.legs) { leg in
-                        MapPolyline(coordinates: leg.coordinates)
+                        MapPolyline(coordinates: hideOtherTripLines ? (tripRoutePaths[leg.id] ?? leg.coordinates) : leg.coordinates)
                             .stroke(isAccess(leg) ? Color.gray : model.routeColor(leg.routeId),
                                     style: StrokeStyle(lineWidth: 5, lineCap: .round, dash: isAccess(leg) ? [2, 8] : []))
                     }
@@ -61,7 +64,7 @@ struct ContentView: View {
                 if let b = model.planner.to, model.planner.selected != nil {
                     Marker("B", coordinate: b.coordinate).tint(.red)
                 }
-                ForEach(model.visibleStations) { st in
+                ForEach(model.visibleStations.filter { tripMapVisibility.showsStation($0) }) { st in
                     Annotation(st.name, coordinate: .init(latitude: st.lat, longitude: st.lon), anchor: .center) {
                         Button { model.selectedStation = st } label: {
                             Circle()
@@ -76,7 +79,7 @@ struct ContentView: View {
                         .accessibilityLabel("Station \(st.name)")
                     }
                 }
-                ForEach(model.mapVehicles) { v in
+                ForEach(model.mapVehicles.filter { tripMapVisibility.showsRoute($0.routeId) }) { v in
                     Annotation(v.label ?? v.id, coordinate: .init(latitude: v.lat, longitude: v.lon)) {
                         TrainMarker(color: color(for: v.routeId), isMine: v.id == model.myTrain?.vehicleId, isHighlighted: v.id == model.highlightedVehicleId)
                             .opacity(plannedRouteIDs.isEmpty || isPlannedRoute(v.routeId) ? 1 : 0.2)
@@ -87,6 +90,10 @@ struct ContentView: View {
             .mapControls { MapUserLocationButton(); MapCompass() }
             .onTapGesture { point in
                 guard let c = proxy.convert(point, from: .local) else { return }
+                if model.planner.pickTarget != nil {
+                    model.planner.dropPin(c)
+                    return
+                }
                 let edge = proxy.convert(CGPoint(x: point.x + 28, y: point.y), from: .local)
                 let tolerance = edge.map { abs($0.longitude - c.longitude) } ?? 0.002
                 if let id = routeID(near: c, tolerance: tolerance) {
@@ -98,8 +105,21 @@ struct ContentView: View {
             }
 
             VStack(spacing: 8) {
+                if let m = model.myTrain, let v = model.vehicles.first(where: { $0.id == m.vehicleId }) {
+                    MyTrainCard(vehicle: v, match: m)
+                }
+                if let v = model.selected { VehicleCard(vehicle: v) }
                 HStack {
-                    emptyStateHint
+                    if model.planner.selected != nil, model.planner.pickTarget == nil {
+                        Toggle("Hide other lines", isOn: $hideOtherTripLines)
+                            .font(.caption.weight(.medium))
+                            .fixedSize()
+                            .padding(8)
+                            .background(.regularMaterial, in: Capsule())
+                            .accessibilityIdentifier("hideOtherLinesToggle")
+                    } else {
+                        emptyStateHint
+                    }
                     Spacer(minLength: 0)
                     Button { showPreferences = true } label: {
                         Image(systemName: "gearshape.fill")
@@ -110,10 +130,6 @@ struct ContentView: View {
                     .accessibilityLabel("Boston Transit settings")
                     .accessibilityIdentifier("moreButton")
                 }
-                if let m = model.myTrain, let v = model.vehicles.first(where: { $0.id == m.vehicleId }) {
-                    MyTrainCard(vehicle: v, match: m)
-                }
-                if let v = model.selected { VehicleCard(vehicle: v) }
             }
             .padding()
         }
@@ -136,10 +152,34 @@ struct ContentView: View {
         }
         .sheet(isPresented: Binding(get: { model.planner.showSheet }, set: { model.planner.showSheet = $0 })) {
             PlannerView()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $plannerSheetDetent)
         }
-        .onChange(of: model.planner.selectedId) { _, _ in fitItinerary() }
+        .onChange(of: model.planner.selectedId) { _, _ in
+            fitItinerary()
+            clearHiddenVehicleSelection()
+        }
         .onChange(of: model.planner.results.count) { _, _ in fitItinerary() }
+        .onChange(of: hideOtherTripLines) { _, _ in clearHiddenVehicleSelection() }
+        .task(id: "\(hideOtherTripLines)-\(model.planner.selected?.id.uuidString ?? "")-\(model.routeTraces.count)") {
+            tripRoutePaths = [:]
+            guard hideOtherTripLines, let itinerary = model.planner.selected else { return }
+            let legs = itinerary.transitLegs.compactMap { leg -> (UUID, String, [TripStop])? in
+                guard let routeID = leg.routeId else { return nil }
+                return (leg.id, routeID, leg.tripStops)
+            }
+            let traces = model.routeTraces
+            let paths = await Task.detached(priority: .userInitiated) {
+                var paths: [UUID: [CLLocationCoordinate2D]] = [:]
+                for (id, routeID, stops) in legs {
+                    if let coordinates = TripRoutePath.coordinates(stops: stops, traces: traces.filter { $0.routeId == routeID }) {
+                        paths[id] = coordinates
+                    }
+                }
+                return paths
+            }.value
+            guard !Task.isCancelled else { return }
+            tripRoutePaths = paths
+        }
         .task { await model.refreshLoop() }
         .onChange(of: scenePhase) { _, phase in model.isActive = phase == .active }
         .sheet(isPresented: $showAlerts) { AlertsView() }
@@ -212,10 +252,20 @@ struct ContentView: View {
         Set(model.planner.selected?.transitLegs.compactMap(\.routeId) ?? [])
     }
 
+    private var tripMapVisibility: TripMapVisibility {
+        TripMapVisibility(plannedRouteIDs: plannedRouteIDs,
+                          plannedStationIDs: Set(model.planner.selected?.transitLegs.flatMap(\.tripStops).map(\.stationId) ?? []),
+                          hideOtherLines: hideOtherTripLines)
+    }
+
+    private func clearHiddenVehicleSelection() {
+        if let selected = model.selected, !tripMapVisibility.showsRoute(selected.routeId) {
+            model.selectedVehicleId = nil
+        }
+    }
+
     private var plannedLines: Set<LineGroup> {
-        Set(plannedRouteIDs.compactMap { routeId in
-            model.routes[routeId].flatMap { LineGroup(routeId: $0.id) }
-        })
+        Set(plannedRouteIDs.compactMap(LineGroup.init(routeId:)))
     }
 
     private func isPlannedRoute(_ routeId: String) -> Bool {
@@ -226,7 +276,7 @@ struct ContentView: View {
         guard !plannedRouteIDs.isEmpty else {
             return model.preferences.lines.contains(trace.line) ? 0.9 : 0.35
         }
-        return isPlannedRoute(trace.routeId) ? 0.95 : 0.16
+        return isPlannedRoute(trace.routeId) && !tripMapVisibility.fadesRouteTraces ? 0.95 : 0.16
     }
 
     private var statusBar: some View {

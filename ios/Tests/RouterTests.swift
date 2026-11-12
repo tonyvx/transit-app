@@ -1,3 +1,4 @@
+import CoreLocation
 import XCTest
 @testable import TransitApp
 
@@ -129,6 +130,26 @@ final class RouterTests: XCTestCase {
     func testGeoDistanceOneDegreeOfLatitude() {
         XCTAssertEqual(Geo.distanceM(42, -71, 43, -71), 111_195, accuracy: 100)
         XCTAssertEqual(Geo.distanceM(42, -71, 42, -71), 0, accuracy: 0.001)
+    }
+
+    func testPathDistanceUsesEachStopAndRejectsIncompletePaths() throws {
+        let points = [
+            CLLocationCoordinate2D(latitude: 42, longitude: -71),
+            CLLocationCoordinate2D(latitude: 42.01, longitude: -71),
+            CLLocationCoordinate2D(latitude: 42.01, longitude: -70.99)
+        ]
+        let expected = Geo.distanceM(42, -71, 42.01, -71) + Geo.distanceM(42.01, -71, 42.01, -70.99)
+        XCTAssertEqual(try XCTUnwrap(Geo.pathDistanceM(points)), expected, accuracy: 0.001)
+        XCTAssertNil(Geo.pathDistanceM([]))
+        XCTAssertNil(Geo.pathDistanceM([points[0]]))
+    }
+
+    func testItineraryDistanceIsUnavailableIfAnyLegIsMissingDistance() {
+        let now = Date()
+        let leg = ItineraryLeg(kind: .transit, routeId: nil, directionId: nil, fromName: "A", toName: "B",
+                               start: now, end: now, stopCount: 1, coordinates: [])
+        let itinerary = Itinerary(legs: [leg], leaveBy: now, arriveAt: now)
+        XCTAssertNil(itinerary.distanceMeters)
     }
 }
 

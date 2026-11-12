@@ -2,6 +2,97 @@ import XCTest
 @testable import TransitApp
 
 final class VehicleFilterTests: XCTestCase {
+    func testTripMapVisibilityOnlyShowsTripStationsAndRoutesWhenEnabled() {
+        let tripStation = Station(stopId: "A", name: "A", lat: 42, lon: -71, line: .red)
+        let otherRedStation = Station(stopId: "B", name: "B", lat: 42, lon: -71, line: .red)
+        let otherLineAtTripStation = Station(stopId: "A", name: "A", lat: 42, lon: -71, line: .orange)
+        let all = TripMapVisibility(plannedRouteIDs: ["Red", "CR-Fitchburg"], plannedStationIDs: ["A"], hideOtherLines: false)
+        XCTAssertTrue(all.showsRoute("Orange"))
+        XCTAssertTrue(all.showsStation(otherRedStation))
+        XCTAssertFalse(all.fadesRouteTraces)
+
+        let tripOnly = TripMapVisibility(plannedRouteIDs: ["Red", "CR-Fitchburg"], plannedStationIDs: ["A"], hideOtherLines: true)
+        XCTAssertTrue(tripOnly.showsRoute("Red"))
+        XCTAssertTrue(tripOnly.showsRoute("CR-Fitchburg"))
+        XCTAssertFalse(tripOnly.showsRoute("Orange"))
+        XCTAssertFalse(tripOnly.showsRoute("CR-Lowell"))
+        XCTAssertTrue(tripOnly.fadesRouteTraces)
+        XCTAssertTrue(tripOnly.showsStation(tripStation))
+        XCTAssertFalse(tripOnly.showsStation(otherRedStation))
+        XCTAssertFalse(tripOnly.showsStation(otherLineAtTripStation))
+
+        let noTrip = TripMapVisibility(plannedRouteIDs: [], plannedStationIDs: [], hideOtherLines: true)
+        XCTAssertTrue(noTrip.showsRoute("Orange"))
+        XCTAssertTrue(noTrip.showsStation(otherLineAtTripStation))
+        XCTAssertFalse(noTrip.fadesRouteTraces)
+    }
+
+    func testTripRoutePathClipsShapeAndSupportsReverseTrips() throws {
+        let trace = RouteTrace(id: "red", routeId: "Red", line: .red, coordinates: (0...4).map {
+            MapCoordinate(latitude: 42 + Double($0) * 0.01, longitude: -71)
+        })
+        let stops = [
+            TripStop(stationId: "a", name: "A", lat: 42.005, lon: -71),
+            TripStop(stationId: "b", name: "B", lat: 42.02, lon: -71),
+            TripStop(stationId: "c", name: "C", lat: 42.035, lon: -71),
+        ]
+        let forward = try XCTUnwrap(TripRoutePath.coordinates(stops: stops, traces: [trace]))
+        XCTAssertEqual(forward.count, 5)
+        XCTAssertEqual(forward.first!.latitude, 42.005, accuracy: 0.000001)
+        XCTAssertEqual(forward.last!.latitude, 42.035, accuracy: 0.000001)
+        let reverse = try XCTUnwrap(TripRoutePath.coordinates(stops: stops.reversed(), traces: [trace]))
+        XCTAssertEqual(reverse.first!.latitude, 42.035, accuracy: 0.000001)
+        XCTAssertEqual(reverse.last!.latitude, 42.005, accuracy: 0.000001)
+    }
+
+    func testTripRoutePathRejectsWrongBranchesAndNonMonotonicStops() {
+        let trace = RouteTrace(id: "red", routeId: "Red", line: .red, coordinates: (0...4).map {
+            MapCoordinate(latitude: 42 + Double($0) * 0.01, longitude: -71)
+        })
+        let a = TripStop(stationId: "a", name: "A", lat: 42.005, lon: -71)
+        let b = TripStop(stationId: "b", name: "B", lat: 42.03, lon: -71)
+        let c = TripStop(stationId: "c", name: "C", lat: 42.015, lon: -71)
+        let distant = TripStop(stationId: "d", name: "D", lat: 42.03, lon: -70.9)
+        XCTAssertNil(TripRoutePath.coordinates(stops: [a, b, c], traces: [trace]))
+        XCTAssertNil(TripRoutePath.coordinates(stops: [a, distant], traces: [trace]))
+        XCTAssertNil(TripRoutePath.coordinates(stops: [a, b], traces: []))
+    }
+
+    func testTripRoutePathChoosesShapeMatchingIntermediateStops() throws {
+        let straight = RouteTrace(id: "straight", routeId: "Red", line: .red, coordinates: [
+            MapCoordinate(latitude: 42, longitude: -71),
+            MapCoordinate(latitude: 42.02, longitude: -71),
+        ])
+        let curved = RouteTrace(id: "curved", routeId: "Red", line: .red, coordinates: [
+            MapCoordinate(latitude: 42, longitude: -71),
+            MapCoordinate(latitude: 42.01, longitude: -71.01),
+            MapCoordinate(latitude: 42.02, longitude: -71),
+        ])
+        let stops = [
+            TripStop(stationId: "a", name: "A", lat: 42, lon: -71),
+            TripStop(stationId: "b", name: "B", lat: 42.01, lon: -71.01),
+            TripStop(stationId: "c", name: "C", lat: 42.02, lon: -71),
+        ]
+        let path = try XCTUnwrap(TripRoutePath.coordinates(stops: stops, traces: [straight, curved]))
+        XCTAssertEqual(path.count, 3)
+        XCTAssertEqual(path[1].longitude, -71.01, accuracy: 0.000001)
+    }
+
+    func testTripRoutePathClipsTwoStopsOnSameSegment() throws {
+        let trace = RouteTrace(id: "red", routeId: "Red", line: .red, coordinates: [
+            MapCoordinate(latitude: 42, longitude: -71),
+            MapCoordinate(latitude: 42.01, longitude: -71),
+        ])
+        let stops = [
+            TripStop(stationId: "a", name: "A", lat: 42.002, lon: -71),
+            TripStop(stationId: "b", name: "B", lat: 42.008, lon: -71),
+        ]
+        let path = try XCTUnwrap(TripRoutePath.coordinates(stops: stops, traces: [trace]))
+        XCTAssertEqual(path.count, 2)
+        XCTAssertEqual(path[0].latitude, 42.002, accuracy: 0.000001)
+        XCTAssertEqual(path[1].latitude, 42.008, accuracy: 0.000001)
+    }
+
     private func vehicle(_ id: String, route: String, direction: Int? = 0, branch: String? = nil) -> Vehicle {
         Vehicle(id: id, routeId: route, tripId: nil, directionId: direction, branchId: branch, label: id,
                 lat: 42.3, lon: -71.0, bearing: nil, speedMps: nil, status: nil, updatedAt: nil)

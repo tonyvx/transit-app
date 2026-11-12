@@ -2,6 +2,98 @@ import XCTest
 
 final class GuideScreenshotTests: XCTestCase {
     @MainActor
+    func testHowToGuideDisplaysBulletedInstructions() {
+        let app = XCUIApplication()
+        app.launch()
+        if app.navigationBars["How to use"].waitForExistence(timeout: 3) {
+            app.navigationBars["How to use"].buttons["Done"].tap()
+        }
+        XCTAssertTrue(app.buttons["moreButton"].waitForExistence(timeout: 10))
+        app.buttons["moreButton"].tap()
+        let guide = app.buttons["openGuideLink"]
+        for _ in 0..<8 where !guide.isHittable { app.swipeUp() }
+        XCTAssertTrue(guide.waitForExistence(timeout: 5))
+        guide.tap()
+        XCTAssertTrue(app.navigationBars["How to use"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["1. Choose your favorite lines"].exists)
+        XCTAssertTrue(app.staticTexts["Tap a route on the map to see its name, directions and endpoints, or use the star to favorite it."].exists)
+        for _ in 0..<12 {
+            if app.staticTexts["5. Plan a trip"].isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(app.staticTexts["5. Plan a trip"].exists)
+        XCTAssertTrue(app.staticTexts["Expand Saved trips to see saved journeys and reminders."].exists)
+    }
+
+    @MainActor
+    func testPlannerModeControlsAndLocationBlur() throws {
+        let app = XCUIApplication()
+        app.launch()
+        if app.navigationBars["How to use"].waitForExistence(timeout: 3) {
+            app.navigationBars["How to use"].buttons["Done"].tap()
+        }
+        XCTAssertTrue(app.buttons["plannerSummaryButton"].waitForExistence(timeout: 10))
+        app.buttons["plannerSummaryButton"].tap()
+        XCTAssertTrue(app.navigationBars["Trip planner"].waitForExistence(timeout: 10))
+        let go = app.buttons["findTripsButton"]
+        XCTAssertEqual(go.label, "GO")
+        XCTAssertLessThan(go.frame.width, app.windows.firstMatch.frame.width / 2)
+        let savedTrips = app.buttons["savedTripsDisclosure"]
+        XCTAssertTrue(savedTrips.waitForExistence(timeout: 5))
+        XCTAssertTrue(savedTrips.label.contains("Saved trips ("))
+        if savedTrips.label.contains("(0)") {
+            XCTAssertFalse(app.staticTexts["No saved trips yet"].exists)
+            savedTrips.tap()
+            XCTAssertTrue(app.staticTexts["No saved trips yet"].waitForExistence(timeout: 5))
+            savedTrips.tap()
+        }
+        for mode in ["walk", "car", "scooter", "bike"] {
+            XCTAssertTrue(app.buttons["stationMode-\(mode)"].exists)
+        }
+        XCTAssertLessThan(savedTrips.frame.minY, app.buttons["stationMode-walk"].frame.minY)
+        app.buttons["stationMode-bike"].tap()
+        let fromMode = app.buttons["fromModeMenu"]
+        let toMode = app.buttons["toModeMenu"]
+        XCTAssertTrue(fromMode.waitForExistence(timeout: 5))
+        XCTAssertTrue(toMode.exists)
+        XCTAssertEqual(fromMode.value as? String, "Bike")
+        XCTAssertEqual(toMode.value as? String, "Bike")
+        fromMode.tap()
+        app.buttons["Drive"].tap()
+        XCTAssertEqual(fromMode.value as? String, "Drive")
+        XCTAssertEqual(toMode.value as? String, "Bike")
+        let fromLocation = app.buttons["fromCurrentLocationButton"]
+        let fromPin = app.buttons["fromPinButton"]
+        let toLocation = app.buttons["toCurrentLocationButton"]
+        let toPin = app.buttons["toPinButton"]
+        let from = app.textFields["fromAddressField"]
+        let to = app.textFields["toAddressField"]
+        XCTAssertTrue(from.waitForExistence(timeout: 5))
+        XCTAssertTrue(to.exists)
+        XCTAssertLessThan(from.frame.maxX, fromLocation.frame.minX)
+        XCTAssertLessThan(fromLocation.frame.maxX, fromPin.frame.minX)
+        XCTAssertLessThan(fromPin.frame.maxX, fromMode.frame.minX)
+        XCTAssertLessThan(to.frame.maxX, toLocation.frame.minX)
+        XCTAssertLessThan(toLocation.frame.maxX, toPin.frame.minX)
+        XCTAssertLessThan(toPin.frame.maxX, toMode.frame.minX)
+        XCTAssertLessThan(to.frame.midY - from.frame.midY, 70)
+        attach(app, named: "Trip planner layout")
+        from.tap()
+        from.typeText("South Station Boston")
+        to.tap()
+        let completed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (from.value as? String) != "South Station Boston" ||
+            app.staticTexts["Search failed. Check your connection."].exists ||
+            app.staticTexts["No match for South Station Boston."].exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 20), .completed)
+        toPin.tap()
+        XCTAssertTrue(app.staticTexts["Tap the map to set destination"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Trip planner"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testCaptureCurrentGuideScreens() throws {
         let app = XCUIApplication()
         app.launch()
@@ -25,8 +117,12 @@ final class GuideScreenshotTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Trip planner"].waitForExistence(timeout: 10))
         let findTripsButton = app.buttons["findTripsButton"]
         XCTAssertTrue(findTripsButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(findTripsButton.label, "GO")
         XCTAssertTrue(findTripsButton.isHittable)
-        let fromField = app.textFields["Address or place"].firstMatch
+        for mode in ["walk", "car", "scooter", "bike"] {
+            XCTAssertTrue(app.buttons["stationMode-\(mode)"].exists)
+        }
+        let fromField = app.textFields["fromAddressField"]
         XCTAssertTrue(fromField.waitForExistence(timeout: 5))
         fromField.tap()
         fromField.typeText("South Station")
@@ -89,7 +185,7 @@ final class GuideScreenshotTests: XCTestCase {
     func testCaptureHowToImages() throws {
         let app = XCUIApplication()
         app.launch()
-        if app.navigationBars["How to use"].waitForExistence(timeout: 3) { app.buttons["Done"].tap() }
+        if app.navigationBars["How to use"].waitForExistence(timeout: 3) { app.navigationBars["How to use"].buttons["Done"].tap() }
 
         let gear = app.buttons["moreButton"]
         XCTAssertTrue(gear.waitForExistence(timeout: 10))
@@ -118,20 +214,20 @@ final class GuideScreenshotTests: XCTestCase {
         attach(app, named: "howto-map")
 
         let station = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Station ")).firstMatch
-        if station.waitForExistence(timeout: 15) {
-            station.tap()
-            sleep(4)
-            attach(app, named: "howto-station")
-            app.buttons["Done"].tap()
-        }
+        XCTAssertTrue(station.waitForExistence(timeout: 30))
+        station.tap()
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+        sleep(4)
+        attach(app, named: "howto-station")
+        app.buttons["Done"].tap()
 
         let alerts = app.buttons["alertsButton"]
-        if alerts.waitForExistence(timeout: 5) {
-            alerts.tap()
-            sleep(2)
-            attach(app, named: "howto-alerts")
-            app.buttons["Done"].tap()
-        }
+        XCTAssertTrue(alerts.waitForExistence(timeout: 5))
+        alerts.tap()
+        XCTAssertTrue(app.navigationBars["MBTA Alerts"].waitForExistence(timeout: 5))
+        sleep(2)
+        attach(app, named: "howto-alerts")
+        app.navigationBars["MBTA Alerts"].buttons["Done"].tap()
 
         app.buttons["plannerSummaryButton"].tap()
         XCTAssertTrue(app.navigationBars["Trip planner"].waitForExistence(timeout: 10))
@@ -139,10 +235,12 @@ final class GuideScreenshotTests: XCTestCase {
         app.buttons["Done"].tap()
 
         gear.tap()
+        let tracking = app.switches["Allow background trip updates"]
         for _ in 0..<8 {
-            if app.switches.firstMatch.exists { break }
+            if tracking.exists && tracking.isHittable { break }
             app.swipeUp()
         }
+        XCTAssertTrue(tracking.exists && tracking.isHittable)
         attach(app, named: "howto-triptracking")
     }
 

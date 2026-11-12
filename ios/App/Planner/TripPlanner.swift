@@ -100,7 +100,8 @@ struct TripPlanner {
                 guard let fs = network.stations[f], let ts = network.stations[to] else { continue }
                 legs.append(ItineraryLeg(kind: .transfer, routeId: nil, directionId: nil, fromName: fs.name, toName: ts.name,
                                          start: t, end: t.addingTimeInterval(secs), stopCount: 0,
-                                         coordinates: [.init(latitude: fs.lat, longitude: fs.lon), .init(latitude: ts.lat, longitude: ts.lon)]))
+                                         coordinates: [.init(latitude: fs.lat, longitude: fs.lon), .init(latitude: ts.lat, longitude: ts.lon)],
+                                         distanceMeters: Geo.distanceM(fs.lat, fs.lon, ts.lat, ts.lon) * AccessMode.circuity))
                 t = t.addingTimeInterval(secs)
             case .transit(let tl):
                 guard let from = tl.stationIds.first, let to = tl.stationIds.last,
@@ -108,14 +109,17 @@ struct TripPlanner {
                 let trip = try await nextTrip(tl, from: from, to: to, notBefore: t)
                 let (tripDepart, tripArrive) = (trip.depart, trip.arrive)
                 firstBoard = firstBoard ?? tripDepart
+                let stations = tl.stationIds.compactMap { network.stations[$0] }
+                let coordinates = stations.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
                 legs.append(ItineraryLeg(kind: .transit, routeId: tl.routeId, directionId: tl.directionId, fromName: fs.name, toName: ts.name,
                                          start: tripDepart, end: tripArrive, stopCount: tl.stationIds.count - 1,
-                                         coordinates: tl.stationIds.compactMap { network.stations[$0] }.map { .init(latitude: $0.lat, longitude: $0.lon) },
+                                         coordinates: coordinates,
                                          isLive: trip.isLive, delaySeconds: trip.delay,
                                          tripId: trip.tripId,
-                                         tripStops: tl.stationIds.compactMap { network.stations[$0] }.map {
+                                         tripStops: stations.map {
                                              TripStop(stationId: $0.id, name: $0.name, lat: $0.lat, lon: $0.lon)
-                                         }))
+                                         },
+                                         distanceMeters: stations.count == tl.stationIds.count ? Geo.pathDistanceM(coordinates) : nil))
                 t = tripArrive
             }
         }
@@ -128,11 +132,13 @@ struct TripPlanner {
         let leaveBy = max(departAt, firstBoard.addingTimeInterval(-toStation.seconds))
         let accessIn = ItineraryLeg(kind: .access(fromMode), routeId: nil, directionId: nil, fromName: a.name, toName: board.name,
                                     start: leaveBy, end: leaveBy.addingTimeInterval(toStation.seconds), stopCount: 0,
-                                    coordinates: [a.coordinate, .init(latitude: board.lat, longitude: board.lon)])
+                                    coordinates: [a.coordinate, .init(latitude: board.lat, longitude: board.lon)],
+                                    distanceMeters: toStation.meters)
         _ = firstAccess
         let accessOut = ItineraryLeg(kind: .access(toMode), routeId: nil, directionId: nil, fromName: alight.name, toName: b.name,
                                      start: t, end: arrive, stopCount: 0,
-                                     coordinates: [.init(latitude: alight.lat, longitude: alight.lon), b.coordinate])
+                                     coordinates: [.init(latitude: alight.lat, longitude: alight.lon), b.coordinate],
+                                     distanceMeters: fromStation.meters)
         return Itinerary(legs: [accessIn] + legs + [accessOut], leaveBy: leaveBy, arriveAt: arrive)
     }
 

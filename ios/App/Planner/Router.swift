@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 struct TransitLeg: Sendable {
@@ -182,6 +183,13 @@ struct Router: Sendable {
 }
 
 enum Geo {
+    static func pathDistanceM(_ coordinates: [CLLocationCoordinate2D]) -> Double? {
+        guard coordinates.count >= 2 else { return nil }
+        return zip(coordinates, coordinates.dropFirst()).reduce(0) {
+            $0 + distanceM($1.0.latitude, $1.0.longitude, $1.1.latitude, $1.1.longitude)
+        }
+    }
+
     static func distanceM(_ lat1: Double, _ lon1: Double, _ lat2: Double, _ lon2: Double) -> Double {
         let r = 6_371_000.0
         let dLat = (lat2 - lat1) * .pi / 180

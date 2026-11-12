@@ -10,7 +10,7 @@ enum AccessMode: String, CaseIterable, Identifiable, Sendable {
         case .walk: "Walk"
         case .bike: "Bike"
         case .scooter: "Scooter"
-        case .car: "Car"
+        case .car: "Drive"
         }
     }
 
@@ -137,6 +137,10 @@ struct ItineraryLeg: Identifiable {
     var tripId: String? = nil
     /// Ordered stops on the transit leg, used to count down to disembarkment.
     var tripStops: [TripStop] = []
+    /// Route distance in metres; transit and transfer distances are estimates.
+    var distanceMeters: Double? = nil
+
+    var duration: TimeInterval { end.timeIntervalSince(start) }
 }
 
 struct Itinerary: Identifiable {
@@ -147,6 +151,10 @@ struct Itinerary: Identifiable {
     let arriveAt: Date
 
     var duration: TimeInterval { arriveAt.timeIntervalSince(leaveBy) }
+    var distanceMeters: Double? {
+        guard legs.allSatisfy({ $0.distanceMeters != nil }) else { return nil }
+        return legs.reduce(0) { $0 + ($1.distanceMeters ?? 0) }
+    }
     var transitLegs: [ItineraryLeg] { legs.filter { if case .transit = $0.kind { true } else { false } } }
     var isLive: Bool { transitLegs.contains { $0.isLive } }
     var transfers: Int { max(0, transitLegs.count - 1) }

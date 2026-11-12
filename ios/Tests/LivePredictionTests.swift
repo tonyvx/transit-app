@@ -63,6 +63,17 @@ final class LivePredictionTests: XCTestCase {
         let it = try await plan(p)
         XCTAssertEqual(it.leaveBy, t0.addingTimeInterval(540))
     }
+
+    func testDistancesIncludeRoutedAccessAndEstimatedTransit() async throws {
+        let p = FakeProvider(deps: [("T1", 300)], arrive: ["T1": 900], live: [:])
+        let itinerary = try await plan(p)
+        XCTAssertEqual(itinerary.legs.count, 3)
+        XCTAssertEqual(try XCTUnwrap(itinerary.legs[0].distanceMeters), 80, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(itinerary.legs[1].distanceMeters), 1_111.95, accuracy: 1)
+        XCTAssertEqual(try XCTUnwrap(itinerary.legs[2].distanceMeters), 80, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(itinerary.distanceMeters), 1_271.95, accuracy: 1)
+        XCTAssertEqual(itinerary.legs[1].duration, 600)
+    }
 }
 
 final class ArriveByTests: XCTestCase {
@@ -108,10 +119,15 @@ struct FakeProvider: TransitProvider {
     let deps: [(String, TimeInterval)]
     let arrive: [String: TimeInterval]
     let live: [String: LiveTimes]
-    private let base = Date(timeIntervalSince1970: 1_800_000_000)
+    let networkData: TransitNetwork
+    private let base: Date
 
-    init(deps: [(String, TimeInterval)], arrive: [String: TimeInterval], live: [String: LiveTimes]) {
+    init(deps: [(String, TimeInterval)], arrive: [String: TimeInterval], live: [String: LiveTimes],
+         networkData: TransitNetwork = TransitNetwork(stations: [:], patterns: []),
+         base: Date = Date(timeIntervalSince1970: 1_800_000_000)) {
         self.deps = deps; self.arrive = arrive; self.live = live
+        self.networkData = networkData
+        self.base = base
     }
 
     func departures(routeId: String, directionId: Int, stationId: String, after: Date, limit: Int) async throws -> [ScheduledDeparture] {
@@ -126,6 +142,6 @@ struct FakeProvider: TransitProvider {
     func branches() async throws -> [Branch] { [] }
     func stations(routeIds: [String]) async throws -> [StopInfo] { [] }
     func origins(routeId: String, directionId: Int) async throws -> [StopInfo] { [] }
-    func network() async throws -> TransitNetwork { TransitNetwork(stations: [:], patterns: []) }
+    func network() async throws -> TransitNetwork { networkData }
     func arrivals(stopId: String, routeIds: [String]) async throws -> [Arrival] { [] }
 }
